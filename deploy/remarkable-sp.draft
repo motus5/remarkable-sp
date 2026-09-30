@@ -1,0 +1,4 @@
+name=remarkable-sp
+desc=Aufgaben, Handschrift & Zeiterfassung
+call=/opt/bin/remarkable-sp
+term=:
