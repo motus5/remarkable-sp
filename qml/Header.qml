@@ -1,9 +1,10 @@
 import QtQuick
 
-// Status bar: open tasks, time tracked today, running task and focus timer.
+// Top bar: menu, context title, day stats, focus timer, sync state.
 Rectangle {
     id: root
     property real u: 10
+    signal menuRequested()
     implicitHeight: col.implicitHeight + 3 * u
     color: "white"
 
@@ -16,49 +17,62 @@ Rectangle {
         anchors.rightMargin: 2 * root.u
         spacing: root.u
 
-        Row {
+        Item {
             width: parent.width
-            spacing: 2 * root.u
+            height: 7 * root.u
+            EButton {
+                id: menuBtn
+                u: root.u
+                text: "☰"
+                implicitWidth: 7 * root.u
+                onClicked: root.menuRequested()
+            }
             Text {
-                text: "Heute"
-                font.pixelSize: 5 * root.u
+                anchors.left: menuBtn.right
+                anchors.leftMargin: 2 * root.u
+                anchors.right: syncBtn.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: app.contextTitle
+                elide: Text.ElideRight
+                font.pixelSize: 4.6 * root.u
                 font.bold: true
             }
-            Text {
-                anchors.baseline: parent.children[0].baseline
-                text: tasks.openCount + " offen · " + tasks.doneTodayCount + " erledigt · "
-                      + tasks.formatDuration(tasks.todayTotal) + " erfasst"
-                font.pixelSize: 2.8 * root.u
+            EButton {
+                id: syncBtn
+                anchors.right: parent.right
+                u: root.u
+                visible: sync.configured
+                text: sync.busy ? "…" : (!sync.lastOk ? "⚠ Sync" : (app.pendingCount > 0 ? "↻ " + app.pendingCount : "↻"))
+                onClicked: sync.syncNow()
             }
+        }
+
+        Text {
+            width: parent.width
+            elide: Text.ElideRight
+            text: app.openCount + " offen · " + app.doneTodayCount + " erledigt · "
+                  + app.formatDuration(app.todayTotal) + " erfasst"
+                  + (app.todayEstimate > 0 ? " · noch ~" + app.formatDuration(app.todayEstimate) : "")
+            font.pixelSize: 2.6 * root.u
         }
 
         Row {
             width: parent.width
-            spacing: 2 * root.u
+            spacing: 1.5 * root.u
             EButton {
                 u: root.u
-                text: tasks.focusActive ? "Fokus " + tasks.focusRemaining + " min" : "Fokus " + tasks.focusMinutes + " min"
-                checked: tasks.focusActive
-                onClicked: tasks.focusActive ? tasks.stopFocus() : tasks.startFocus()
+                text: app.focusActive ? "Fokus " + app.focusRemaining + " min" : "Fokus " + app.focusMinutes + " min"
+                checked: app.focusActive
+                onClicked: app.focusActive ? app.stopFocus() : app.startFocus()
             }
-            EButton {
-                u: root.u
-                visible: !tasks.focusActive
-                text: "−5"
-                onClicked: tasks.focusMinutes = tasks.focusMinutes - 5
-            }
-            EButton {
-                u: root.u
-                visible: !tasks.focusActive
-                text: "+5"
-                onClicked: tasks.focusMinutes = tasks.focusMinutes + 5
-            }
+            EButton { u: root.u; visible: !app.focusActive; text: "−5"; onClicked: app.focusMinutes = app.focusMinutes - 5 }
+            EButton { u: root.u; visible: !app.focusActive; text: "+5"; onClicked: app.focusMinutes = app.focusMinutes + 5 }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - x
                 elide: Text.ElideRight
-                visible: tasks.currentTaskId !== ""
-                text: "▶ " + (tasks.currentTaskTitle !== "" ? tasks.currentTaskTitle : "(handschriftliche Aufgabe)")
+                visible: app.currentTaskId !== ""
+                text: "▶ " + app.currentTaskTitle
                 font.pixelSize: 2.8 * root.u
                 font.bold: true
             }

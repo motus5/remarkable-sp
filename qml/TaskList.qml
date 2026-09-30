@@ -1,12 +1,11 @@
 import QtQuick
 
-// Task list with paging buttons: flicking works, but whole-page jumps cause far
-// fewer e-ink refreshes than kinetic scrolling.
+// Task list of the current context with paging buttons: flicking works, but
+// whole-page jumps cause far fewer e-ink refreshes than kinetic scrolling.
 Item {
     id: root
     property real u: 10
     signal openTask(string id)
-    signal message(string text)
 
     ListView {
         id: list
@@ -15,7 +14,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: footer.top
         clip: true
-        model: tasks
+        model: app.tasks
         boundsBehavior: Flickable.StopAtBounds
         flickDeceleration: 20000
         maximumFlickVelocity: 4000
@@ -26,9 +25,14 @@ Item {
             title: model.title
             isDone: model.isDone
             isSubTask: model.isSubTask
+            isBacklog: model.isBacklog
             isTracking: model.isTracking
             timeSpent: model.timeSpent
             timeEstimate: model.timeEstimate
+            dueDay: model.dueDay
+            priority: model.priority
+            projectTitle: model.projectTitle
+            tagTitles: model.tagTitles
             inkTitlePath: model.inkTitlePath
             inkRevision: model.inkRevision
             onOpened: root.openTask(model.taskId)
@@ -37,7 +41,7 @@ Item {
         Text {
             anchors.centerIn: parent
             visible: list.count === 0
-            text: tasks.showDone ? "Noch nichts erledigt." : "Keine offenen Aufgaben.\nMit „+ Aufgabe“ loslegen."
+            text: app.showDone ? "Noch nichts erledigt." : "Keine offenen Aufgaben.\nMit „+ Aufgabe“ loslegen."
             horizontalAlignment: Text.AlignHCenter
             font.pixelSize: 3.4 * root.u
             color: "#666666"
@@ -64,14 +68,12 @@ Item {
                 u: root.u
                 text: "+ Aufgabe"
                 checked: true
-                onClicked: root.openTask(tasks.addTask(""))
+                onClicked: root.openTask(app.addTask(""))
             }
-            EButton { u: root.u; text: "Offen"; checked: !tasks.showDone; onClicked: tasks.showDone = false }
-            EButton { u: root.u; text: "Erledigt"; checked: tasks.showDone; onClicked: tasks.showDone = true }
+            EButton { u: root.u; text: "Offen"; checked: !app.showDone; onClicked: app.showDone = false }
+            EButton { u: root.u; text: "Erledigt"; checked: app.showDone; onClicked: app.showDone = true }
             EButton { u: root.u; text: "▲"; onClicked: list.page(-1) }
             EButton { u: root.u; text: "▼"; onClicked: list.page(1) }
-            EButton { u: root.u; text: "Import"; onClicked: root.message(tasks.importFromInbox()) }
-            EButton { u: root.u; text: "Export"; onClicked: root.message(tasks.exportNow()) }
         }
     }
 }

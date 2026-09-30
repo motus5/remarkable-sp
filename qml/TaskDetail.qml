@@ -1,22 +1,28 @@
 import QtQuick
 
-// Full-page task view: handwritten title + handwritten notes page.
+// Full-page task view: handwritten title and notes, planning, project, tags.
 Rectangle {
     id: root
     property real u: 10
     property string taskId
-    property var task: tasks.get(taskId)
+    property var task: app.get(taskId)
     property bool eraserMode: false
+    property bool showDetails: false
     signal closed()
 
     color: "white"
 
-    function refresh() { task = tasks.get(taskId) }
+    function refresh() {
+        task = app.get(taskId)
+        if (!task.taskId)
+            root.closed() // deleted remotely
+    }
     function persist() {
+        const titleEmpty = titleInk.canvas.empty
         titleInk.canvas.save()
         notesInk.canvas.save()
-        tasks.setTitle(taskId, titleInput.text)
-        tasks.inkSaved(taskId)
+        app.setTitle(taskId, titleInput.text)
+        app.inkSaved(taskId, titleEmpty)
     }
     function close() {
         persist()
@@ -24,110 +30,158 @@ Rectangle {
     }
 
     Connections {
-        target: tasks
-        function onStatsChanged() { root.refresh() }
+        target: app
+        function onDataChanged() { root.refresh() }
         function onTrackingChanged() { root.refresh() }
     }
 
-    Flow {
-        id: toolbar
+    Column {
+        id: top
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: 2 * root.u
-        spacing: 1.5 * root.u
+        spacing: 1.2 * root.u
 
-        EButton { u: root.u; text: "‹ Zurück"; onClicked: root.close() }
-        EButton {
-            u: root.u
-            text: root.task.isDone ? "✓ Erledigt" : "Erledigt"
-            checked: root.task.isDone === true
-            onClicked: { tasks.toggleDone(root.taskId); root.refresh() }
-        }
-        EButton {
-            u: root.u
-            visible: !root.task.isDone
-            text: root.task.isTracking ? "❚❚ " + tasks.formatDuration(root.task.timeSpent)
-                                       : "▶ " + tasks.formatDuration(root.task.timeSpent)
-            checked: root.task.isTracking === true
-            onClicked: tasks.toggleTracking(root.taskId)
-        }
-        EButton {
-            u: root.u
-            text: "Schätzung " + tasks.formatDuration(root.task.timeEstimate || 0)
-            onClicked: {
-                // Cycle through common estimates: 0, 15, 30, 60, 120 minutes.
-                const steps = [0, 15, 30, 60, 120]
-                const cur = Math.round((root.task.timeEstimate || 0) / 60000)
-                const next = steps[(steps.indexOf(cur) + 1) % steps.length]
-                tasks.setEstimateMinutes(root.taskId, next)
+        Flow {
+            width: parent.width
+            spacing: 1.2 * root.u
+            EButton { u: root.u; text: "‹ Zurück"; onClicked: root.close() }
+            EButton {
+                u: root.u
+                text: root.task.isDone ? "✓ Erledigt" : "Erledigt"
+                checked: root.task.isDone === true
+                onClicked: app.toggleDone(root.taskId)
             }
+            EButton {
+                u: root.u
+                visible: !root.task.isDone
+                text: (root.task.isTracking ? "❚❚ " : "▶ ") + app.formatDuration(root.task.timeSpent || 0)
+                checked: root.task.isTracking === true
+                onClicked: app.toggleTracking(root.taskId)
+            }
+            EButton {
+                u: root.u
+                visible: !root.task.isSubTask
+                text: "+ Unteraufgabe"
+                onClicked: {
+                    root.persist()
+                    root.taskId = app.addSubTask(root.taskId, "")
+                }
+            }
+            EButton { u: root.u; text: "Radierer"; checked: root.eraserMode; onClicked: root.eraserMode = !root.eraserMode }
+            EButton {
+                u: root.u
+                text: "↶"
+                enabled: notesInk.canvas.canUndo || titleInk.canvas.canUndo
+                onClicked: notesInk.canvas.canUndo ? notesInk.canvas.undo() : titleInk.canvas.undo()
+            }
+            EButton { u: root.u; text: "Löschen"; onClicked: { app.removeTask(root.taskId); root.closed() } }
         }
-        EButton {
-            u: root.u
+
+        // Planning row: like SP's "schedule" shortcuts.
+        Flow {
+            width: parent.width
+            spacing: root.u
             visible: !root.task.isSubTask
-            text: "+ Unteraufgabe"
-            onClicked: {
-                root.persist()
-                const id = tasks.addTask("", root.taskId)
-                root.taskId = id
-                root.refresh()
+            Text { text: "Planen:"; font.pixelSize: 2.6 * root.u; height: 5.5 * root.u; verticalAlignment: Text.AlignVCenter }
+            Chip { u: root.u; text: "Heute"; checked: root.task.isToday === true; onClicked: app.schedule(root.taskId, 0) }
+            Chip {
+                u: root.u; text: "Morgen"
+                checked: root.task.dueDay === Qt.formatDate(new Date(Date.now() + 864e5), "yyyy-MM-dd")
+                onClicked: app.schedule(root.taskId, 1)
+            }
+            Chip { u: root.u; text: "+1 Woche"; onClicked: app.schedule(root.taskId, 7) }
+            Chip { u: root.u; text: "Ohne"; checked: !root.task.dueDay && !root.task.dueWithTime; onClicked: app.schedule(root.taskId, -1) }
+            Text {
+                visible: !!root.task.dueDay && !root.task.isToday
+                text: "📅 " + app.formatDay(root.task.dueDay || "")
+                font.pixelSize: 2.6 * root.u
+                height: 5.5 * root.u
+                verticalAlignment: Text.AlignVCenter
             }
         }
-        EButton { u: root.u; text: "Radierer"; checked: root.eraserMode; onClicked: root.eraserMode = !root.eraserMode }
-        EButton {
-            u: root.u
-            text: "↶"
-            enabled: notesInk.canvas.canUndo || titleInk.canvas.canUndo
-            onClicked: notesInk.canvas.canUndo ? notesInk.canvas.undo() : titleInk.canvas.undo()
-        }
-        EButton {
-            u: root.u
-            text: "Löschen"
-            onClicked: { tasks.removeTask(root.taskId); root.closed() }
-        }
-    }
 
-    Column {
-        id: head
-        anchors.top: toolbar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.margins: 2 * root.u
-        spacing: root.u
+        Flow {
+            width: parent.width
+            spacing: root.u
+            Chip {
+                u: root.u
+                text: "Schätzung " + app.formatDuration(root.task.timeEstimate || 0)
+                onClicked: {
+                    const steps = [0, 15, 30, 60, 120, 240]
+                    const cur = Math.round((root.task.timeEstimate || 0) / 60000)
+                    const i = steps.indexOf(cur)
+                    app.setEstimateMinutes(root.taskId, steps[(i + 1) % steps.length])
+                }
+            }
+            Chip {
+                u: root.u
+                text: "Priorität " + (root.task.priority ? "!".repeat(root.task.priority) : "–")
+                onClicked: app.setPriority(root.taskId, ((root.task.priority || 0) + 1) % 4)
+            }
+            Chip {
+                u: root.u
+                visible: !root.task.isSubTask
+                text: (root.task.projectTitle || "Kein Projekt") + (root.showDetails ? "  ▴" : "  ▾")
+                checked: root.showDetails
+                onClicked: root.showDetails = !root.showDetails
+            }
+        }
+
+        // Project & tag assignment (collapsed by default to keep the page calm).
+        Column {
+            width: parent.width
+            spacing: root.u
+            visible: root.showDetails && !root.task.isSubTask
+            Flow {
+                width: parent.width
+                spacing: root.u
+                Text { text: "Projekt:"; font.pixelSize: 2.6 * root.u; height: 5.5 * root.u; verticalAlignment: Text.AlignVCenter }
+                Repeater {
+                    model: app.projects
+                    Chip {
+                        u: root.u
+                        text: modelData.title
+                        checked: root.task.projectId === modelData.id
+                        onClicked: app.setProject(root.taskId, modelData.id)
+                    }
+                }
+            }
+            Flow {
+                width: parent.width
+                spacing: root.u
+                visible: app.tags.length > 0
+                Text { text: "Tags:"; font.pixelSize: 2.6 * root.u; height: 5.5 * root.u; verticalAlignment: Text.AlignVCenter }
+                Repeater {
+                    model: app.tags
+                    Chip {
+                        u: root.u
+                        text: "# " + modelData.title
+                        checked: (root.task.tagIds || []).indexOf(modelData.id) >= 0
+                        onClicked: app.toggleTag(root.taskId, modelData.id)
+                    }
+                }
+            }
+        }
 
         InkField {
             id: titleInk
             width: parent.width
-            height: 12 * root.u
+            height: 11 * root.u
             u: root.u
             eraserMode: root.eraserMode
             source: root.task.inkTitlePath || ""
             placeholder: "Aufgabe hier hinschreiben …"
         }
 
-        // Typed title: for the Type Folio keyboard, desktop, or SP imports.
-        Rectangle {
+        Field {
+            id: titleInput
             width: parent.width
-            height: 6 * root.u
-            border.color: "#aaaaaa"
-            border.width: 1
-            TextInput {
-                id: titleInput
-                anchors.fill: parent
-                anchors.leftMargin: root.u
-                verticalAlignment: TextInput.AlignVCenter
-                font.pixelSize: 3 * root.u
-                text: root.task.title || ""
-                onEditingFinished: tasks.setTitle(root.taskId, text)
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !parent.text && !parent.activeFocus
-                    text: "… oder tippen (Tastatur / Type Folio)"
-                    color: "#888888"
-                    font.pixelSize: 2.6 * root.u
-                }
-            }
+            u: root.u
+            text: root.task.title === "✍ Handschrift (reMarkable)" ? "" : (root.task.title || "")
+            placeholder: "… oder Titel tippen (wird mit SP synchronisiert)"
+            onEdited: (t) => app.setTitle(root.taskId, t)
         }
 
         Text {
@@ -135,22 +189,16 @@ Rectangle {
             visible: (root.task.notes || "") !== ""
             text: root.task.notes || ""
             wrapMode: Text.Wrap
-            maximumLineCount: 6
+            maximumLineCount: 5
             elide: Text.ElideRight
-            font.pixelSize: 2.6 * root.u
+            font.pixelSize: 2.5 * root.u
             color: "#333333"
-        }
-
-        Text {
-            text: "Notizen"
-            font.pixelSize: 2.6 * root.u
-            font.bold: true
         }
     }
 
     InkField {
         id: notesInk
-        anchors.top: head.bottom
+        anchors.top: top.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -161,7 +209,6 @@ Rectangle {
         source: root.task.inkNotesPath || ""
         placeholder: "Notizen, Skizzen, Checklisten …"
 
-        // Ruled lines as a writing guide.
         Repeater {
             model: Math.floor(notesInk.height / (8 * root.u))
             Rectangle {

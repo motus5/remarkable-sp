@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(remarkable-sp VERSION 0.1.0 LANGUAGES CXX)
+project(remarkable-sp VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,9 +10,11 @@ find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Quick Network)
 set(CORE_SOURCES
     src/stroke.h src/stroke.cpp
     src/inkcanvas.h src/inkcanvas.cpp
-    src/task.h src/task.cpp
-    src/taskmodel.h src/taskmodel.cpp
-    src/spimport.h src/spimport.cpp
+    src/spstore.h src/spstore.cpp
+    src/workspace.h src/workspace.cpp
+    src/syncfile.h src/syncfile.cpp
+    src/syncbackend.h src/syncbackend.cpp
+    src/syncengine.h src/syncengine.cpp
     src/updater.h src/updater.cpp
 )
 
@@ -20,6 +22,29 @@ add_library(rmsp_core STATIC ${CORE_SOURCES})
 target_include_directories(rmsp_core PUBLIC src)
 target_link_libraries(rmsp_core PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::Network)
 target_compile_definitions(rmsp_core PUBLIC RMSP_VERSION="${PROJECT_VERSION}")
+
+find_package(ZLIB REQUIRED)
+target_link_libraries(rmsp_core PUBLIC ZLIB::ZLIB)
+
+# Encrypted sync (Argon2id + AES-256-GCM, as in Super Productivity).
+# Argon2 is vendored (reference implementation), AES comes from OpenSSL.
+option(RMSP_ENABLE_CRYPTO "Support encrypted sync data" ON)
+if(RMSP_ENABLE_CRYPTO)
+    find_package(OpenSSL COMPONENTS Crypto)
+    if(OpenSSL_FOUND)
+        add_library(argon2 STATIC
+            third_party/argon2/src/argon2.c third_party/argon2/src/core.c
+            third_party/argon2/src/encoding.c third_party/argon2/src/ref.c
+            third_party/argon2/src/thread.c third_party/argon2/src/blake2/blake2b.c)
+        target_include_directories(argon2 PUBLIC third_party/argon2/include PRIVATE third_party/argon2/src)
+        target_compile_definitions(argon2 PRIVATE ARGON2_NO_THREADS)
+        set_target_properties(argon2 PROPERTIES POSITION_INDEPENDENT_CODE ON C_STANDARD 99)
+        target_link_libraries(rmsp_core PUBLIC argon2 OpenSSL::Crypto)
+        target_compile_definitions(rmsp_core PUBLIC RMSP_HAVE_CRYPTO)
+    else()
+        message(WARNING "OpenSSL not found: encrypted sync disabled")
+    endif()
+endif()
 
 qt_add_executable(remarkable-sp src/main.cpp)
 target_link_libraries(remarkable-sp PRIVATE rmsp_core)
@@ -35,6 +60,12 @@ qt_add_qml_module(remarkable-sp
         qml/InkField.qml
         qml/EButton.qml
         qml/Header.qml
+        qml/SideMenu.qml
+        qml/SettingsPage.qml
+        qml/WorklogPage.qml
+        qml/Chip.qml
+        qml/Keyboard.qml
+        qml/Field.qml
 )
 
 install(TARGETS remarkable-sp RUNTIME DESTINATION bin)

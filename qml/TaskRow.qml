@@ -1,6 +1,6 @@
 import QtQuick
 
-// One list entry: checkbox, title (typed or handwritten), time, play/pause.
+// One list entry: checkbox, title (typed or handwritten), meta line, time, play/pause.
 Rectangle {
     id: root
     property real u: 10
@@ -8,15 +8,31 @@ Rectangle {
     property string title
     property bool isDone
     property bool isSubTask
+    property bool isBacklog
     property bool isTracking
     property real timeSpent
     property real timeEstimate
+    property string dueDay
+    property int priority
+    property string projectTitle
+    property string tagTitles
     property string inkTitlePath
     property int inkRevision
-    onInkRevisionChanged: inkTitle.canvas.reload()
     signal opened()
 
-    height: 11 * u
+    onInkRevisionChanged: inkTitle.canvas.reload()
+
+    readonly property string meta: {
+        const parts = []
+        if (isBacklog) parts.push("Backlog")
+        if (dueDay && !(app.contextType === "TAG" && app.contextId === "TODAY")) parts.push("📅 " + app.formatDay(dueDay))
+        if (projectTitle) parts.push(projectTitle)
+        if (tagTitles) parts.push("# " + tagTitles)
+        return parts.join("  ·  ")
+    }
+    readonly property bool handwritten: title === "" || title === "✍ Handschrift (reMarkable)"
+
+    height: (meta !== "" ? 13 : 11) * u
     color: isTracking ? "#e6e6e6" : "white"
 
     Rectangle {
@@ -37,23 +53,34 @@ Rectangle {
         }
         TapHandler {
             margin: root.u
-            onTapped: tasks.toggleDone(root.taskId)
+            onTapped: app.toggleDone(root.taskId)
         }
     }
 
     Item {
         id: titleArea
         anchors.left: check.right
-        anchors.right: meta.left
+        anchors.right: side.left
         anchors.leftMargin: 2 * root.u
         anchors.rightMargin: root.u
         anchors.top: parent.top
         anchors.bottom: parent.bottom
 
         Text {
-            anchors.fill: parent
-            visible: root.title !== ""
-            verticalAlignment: Text.AlignVCenter
+            id: prio
+            anchors.left: parent.left
+            anchors.verticalCenter: titleText.verticalCenter
+            visible: root.priority > 0
+            text: "!".repeat(root.priority) + " "
+            font.pixelSize: 3.4 * root.u
+            font.bold: true
+        }
+        Text {
+            id: titleText
+            anchors.left: prio.visible ? prio.right : parent.left
+            anchors.right: parent.right
+            y: root.meta !== "" ? 1.5 * root.u : (parent.height - height) / 2
+            visible: !root.handwritten
             elide: Text.ElideRight
             text: root.title
             font.pixelSize: 3.4 * root.u
@@ -61,18 +88,31 @@ Rectangle {
         }
         InkField {
             id: inkTitle
-            // Handwritten title rendered at list size.
-            anchors.fill: parent
-            visible: root.title === ""
+            anchors.left: prio.visible ? prio.right : parent.left
+            anchors.right: parent.right
+            y: root.meta !== "" ? 0 : 0
+            height: 9 * root.u
+            visible: root.handwritten
             editable: false
             u: root.u
-            source: root.title === "" ? root.inkTitlePath : ""
+            source: root.handwritten ? root.inkTitlePath : ""
+        }
+        Text {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 1.2 * root.u
+            visible: root.meta !== ""
+            text: root.meta
+            elide: Text.ElideRight
+            font.pixelSize: 2.3 * root.u
+            color: "#444444"
         }
         TapHandler { onTapped: root.opened() }
     }
 
     Row {
-        id: meta
+        id: side
         anchors.right: parent.right
         anchors.rightMargin: 2 * root.u
         anchors.verticalCenter: parent.verticalCenter
@@ -80,8 +120,8 @@ Rectangle {
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: tasks.formatDuration(root.timeSpent)
-                  + (root.timeEstimate > 0 ? " / " + tasks.formatDuration(root.timeEstimate) : "")
+            text: app.formatDuration(root.timeSpent)
+                  + (root.timeEstimate > 0 ? " / " + app.formatDuration(root.timeEstimate) : "")
             font.pixelSize: 2.6 * root.u
             visible: root.timeSpent > 0 || root.timeEstimate > 0
         }
@@ -91,7 +131,7 @@ Rectangle {
             implicitWidth: 8 * root.u
             text: root.isTracking ? "❚❚" : "▶"
             checked: root.isTracking
-            onClicked: tasks.toggleTracking(root.taskId)
+            onClicked: app.toggleTracking(root.taskId)
         }
     }
 

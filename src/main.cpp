@@ -1,5 +1,8 @@
 #include "inkcanvas.h"
-#include "taskmodel.h"
+#include "spstore.h"
+#include "syncengine.h"
+#include "updater.h"
+#include "workspace.h"
 
 #include <QDir>
 #include <QGuiApplication>
@@ -13,15 +16,21 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("remarkable-sp"));
     app.setOrganizationName(QStringLiteral("remarkable-sp"));
+    app.setApplicationVersion(QStringLiteral(RMSP_VERSION));
 
     QString dataDir = qEnvironmentVariable("RMSP_DATA_DIR");
     if (dataDir.isEmpty())
         dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(dataDir);
+    QDir().mkpath(dataDir + QStringLiteral("/ink"));
 
     qmlRegisterType<InkCanvas>("RemarkableSP.Core", 1, 0, "InkCanvas");
+    qmlRegisterUncreatableType<TaskListModel>("RemarkableSP.Core", 1, 0, "TaskListModel", QStringLiteral("from app.tasks"));
 
-    TaskModel tasks(dataDir);
+    SpStore store(dataDir);
+    Workspace workspace(&store);
+    SyncEngine sync(&store, dataDir + QStringLiteral("/settings.ini"));
+    Updater updater;
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &workspace, [&] { workspace.stopTracking(); });
 
     // Desktop platforms get a window, everything else (linuxfb, epaper, eglfs,
     // vnc, ...) is assumed to be the tablet and runs full screen.
@@ -35,8 +44,12 @@ int main(int argc, char *argv[])
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
 
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
+    engine.rootContext()->setContextProperty(QStringLiteral("app"), &workspace);
+    engine.rootContext()->setContextProperty(QStringLiteral("sync"), &sync);
+    engine.rootContext()->setContextProperty(QStringLiteral("updater"), &updater);
     engine.rootContext()->setContextProperty(QStringLiteral("rmFullscreen"), fullscreen);
+    // On-screen keyboard: on the tablet, or on request for testing.
+    engine.rootContext()->setContextProperty(QStringLiteral("rmOsk"), fullscreen || qEnvironmentVariableIsSet("RMSP_OSK"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.load(QUrl(QStringLiteral("qrc:/RemarkableSP/qml/Main.qml")));
