@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(remarkable-sp VERSION 0.2.0 LANGUAGES C CXX)
+project(remarkable-sp VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,7 @@ set(CORE_SOURCES
     src/syncbackend.h src/syncbackend.cpp
     src/syncengine.h src/syncengine.cpp
     src/updater.h src/updater.cpp
+    src/icon.h src/icon.cpp
 )
 
 add_library(rmsp_core STATIC ${CORE_SOURCES})
@@ -49,23 +50,36 @@ endif()
 qt_add_executable(remarkable-sp src/main.cpp)
 target_link_libraries(remarkable-sp PRIVATE rmsp_core)
 
+set(RMSP_QML_FILES
+    qml/Main.qml
+    qml/Theme.qml
+    qml/TaskList.qml
+    qml/TaskRow.qml
+    qml/TaskDetail.qml
+    qml/InkField.qml
+    qml/IconButton.qml
+    qml/RmButton.qml
+    qml/Chip.qml
+    qml/Popover.qml
+    qml/Field.qml
+    qml/Keyboard.qml
+    qml/NavRail.qml
+    qml/TopBar.qml
+    qml/SettingsPage.qml
+    qml/WorklogPage.qml
+)
+# Flatten qml/ into the module root so every file sees the module's qmldir
+# (needed for the Theme singleton) via the implicit directory import.
+foreach(f ${RMSP_QML_FILES})
+    get_filename_component(name ${f} NAME)
+    set_source_files_properties(${f} PROPERTIES QT_RESOURCE_ALIAS ${name})
+endforeach()
+set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(remarkable-sp
     URI RemarkableSP
     VERSION 1.0
-    QML_FILES
-        qml/Main.qml
-        qml/TaskList.qml
-        qml/TaskRow.qml
-        qml/TaskDetail.qml
-        qml/InkField.qml
-        qml/EButton.qml
-        qml/Header.qml
-        qml/SideMenu.qml
-        qml/SettingsPage.qml
-        qml/WorklogPage.qml
-        qml/Chip.qml
-        qml/Keyboard.qml
-        qml/Field.qml
+    QML_FILES ${RMSP_QML_FILES}
 )
 
 install(TARGETS remarkable-sp RUNTIME DESTINATION bin)

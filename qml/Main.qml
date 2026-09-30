@@ -1,4 +1,5 @@
 import QtQuick
+import RemarkableSP.Core
 
 Window {
     id: win
@@ -8,20 +9,21 @@ Window {
     visible: true
     visibility: rmFullscreen ? Window.FullScreen : Window.Windowed
     title: "reMarkable SP"
-    color: "white"
+    color: Theme.paper
 
     // Layout unit: 1u = 1% of the screen width (14px on a reMarkable 2).
     readonly property real u: width / 100
     property string page: "tasks" // tasks | worklog | settings
     property string openTaskId: ""
-    property bool menuOpen: false
     property var keyboardTarget: null
+    // While a menu or dialog is open the pen must not write on the page below.
+    readonly property bool overlayOpen: popover.visible || dialog.visible
 
     function requestKeyboard(input) {
         if (rmOsk)
             keyboardTarget = input
     }
-    function show(text) { banner.show(text) }
+    function openMenu(items, anchor, title) { popover.open(items, anchor, title) }
 
     Item {
         id: content
@@ -30,71 +32,94 @@ Window {
         anchors.right: parent.right
         anchors.bottom: keyboard.visible ? keyboard.top : parent.bottom
 
-        Header {
-            id: header
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
+        NavRail {
+            id: rail
+            height: win.height // keeps its layout; the keyboard slides over it
             u: win.u
-            visible: win.page === "tasks" && win.openTaskId === ""
-            onMenuRequested: win.menuOpen = true
+            z: 5
+            page: win.page
+            visible: win.openTaskId === ""
+            onNavigate: (p) => {
+                if (p === "export")
+                    toast.show(app.exportNow())
+                else
+                    win.page = p
+            }
+            onOpenMenu: (items, anchor, title) => win.openMenu(items, anchor, title)
         }
 
-        TaskList {
-            anchors.top: header.bottom
+        Item {
+            id: main
             anchors.left: parent.left
+            anchors.leftMargin: rail.railWidth
             anchors.right: parent.right
+            anchors.top: parent.top
             anchors.bottom: parent.bottom
-            u: win.u
-            visible: win.page === "tasks" && win.openTaskId === ""
-            onOpenTask: (id) => win.openTaskId = id
+            visible: win.openTaskId === ""
+
+            TopBar {
+                id: top
+                width: parent.width
+                u: win.u
+                visible: win.page === "tasks"
+                title: app.contextTitle
+                subtitle: {
+                    const s = [app.formatDuration(app.todayTotal) + " heute erfasst"]
+                    if (app.contextType === "TAG" && app.contextId === "TODAY") {
+                        s.unshift(app.openCount + " offen")
+                        if (app.todayEstimate > 0) s.push("noch ~" + app.formatDuration(app.todayEstimate))
+                    }
+                    return s.join("  ·  ")
+                }
+                showTabs: true
+                showAdd: true
+                onAdd: win.openTaskId = app.addTask("")
+            }
+            TaskList {
+                anchors.top: top.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                u: win.u
+                visible: win.page === "tasks"
+                onOpenTask: (id) => win.openTaskId = id
+                onOpenMenu: (items, anchor, title) => win.openMenu(items, anchor, title)
+            }
+            Loader {
+                anchors.fill: parent
+                active: win.page === "worklog"
+                sourceComponent: WorklogPage { u: win.u }
+            }
+            Loader {
+                anchors.fill: parent
+                active: win.page === "settings"
+                sourceComponent: SettingsPage { u: win.u }
+            }
+        }
+
+        // Tapping the dimmed area closes the expanded navigation.
+        Item {
+            anchors.fill: parent
+            visible: rail.expanded
+            z: 4
+            TapHandler { onTapped: rail.expanded = false }
         }
 
         Loader {
             anchors.fill: parent
             active: win.openTaskId !== ""
+            z: 6
             sourceComponent: TaskDetail {
                 u: win.u
                 taskId: win.openTaskId
                 onTaskIdChanged: win.openTaskId = taskId
                 onClosed: win.openTaskId = ""
-            }
-        }
-
-        Loader {
-            anchors.fill: parent
-            active: win.page === "worklog"
-            sourceComponent: WorklogPage { u: win.u; onClosed: win.page = "tasks" }
-        }
-
-        Loader {
-            anchors.fill: parent
-            active: win.page === "settings"
-            sourceComponent: SettingsPage { u: win.u; onClosed: win.page = "tasks" }
-        }
-    }
-
-    // Side navigation as an overlay; tapping outside closes it.
-    Rectangle {
-        anchors.fill: parent
-        visible: win.menuOpen
-        color: "#80ffffff"
-        z: 50
-        TapHandler { onTapped: win.menuOpen = false }
-        SideMenu {
-            width: parent.width * 0.72
-            height: parent.height
-            u: win.u
-            onNavigate: (p) => {
-                win.menuOpen = false
-                win.openTaskId = ""
-                if (p === "export")
-                    banner.show(app.exportNow())
-                else
-                    win.page = p
+                onOpenMenu: (items, anchor, title) => win.openMenu(items, anchor, title)
             }
         }
     }
+
+    Popover { id: popover; u: win.u }
 
     Keyboard {
         id: keyboard
@@ -117,44 +142,64 @@ Window {
 
     Connections {
         target: app
-        function onFocusFinished() { banner.show("Fokus-Session vorbei – kurze Pause!") }
+        function onFocusFinished() { dialog.show("Fokus-Session beendet", "Zeit für eine kurze Pause.") }
     }
     Connections {
         target: sync
-        function onRemoteNewer() { banner.show("Super Productivity nutzt ein neueres Datenformat.\nBitte unter Einstellungen nach Updates suchen.") }
+        function onRemoteNewer() { dialog.show("Update empfohlen", "Super Productivity nutzt ein neueres Datenformat. Bitte unter Einstellungen nach Updates suchen.") }
     }
 
+    // Small notice at the bottom, like the reMarkable "toast".
     Rectangle {
-        id: banner
-        property alias text: bannerText.text
-        function show(t) { text = t; visible = true }
+        id: toast
+        function show(t) { toastText.text = t; visible = true; toastTimer.restart() }
         visible: false
-        anchors.centerIn: parent
-        width: parent.width * 0.8
-        height: bannerText.implicitHeight + 14 * win.u
-        color: "white"
-        border.color: "black"
-        border.width: Math.max(3, win.u / 2)
+        z: 95
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 6 * win.u
+        width: Math.min(parent.width - 8 * win.u, toastText.implicitWidth + 6 * win.u)
+        height: toastText.implicitHeight + 3 * win.u
         radius: win.u
-        z: 100
-
+        color: Theme.ink
         Text {
-            id: bannerText
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 3 * win.u
+            id: toastText
+            anchors.centerIn: parent
+            width: Math.min(implicitWidth, win.width - 14 * win.u)
             wrapMode: Text.Wrap
-            horizontalAlignment: Text.AlignHCenter
-            font.pixelSize: 3.2 * win.u
+            color: Theme.paper
+            font.pixelSize: 2.6 * win.u
         }
-        EButton {
-            u: win.u
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottomMargin: 2 * win.u
-            text: "OK"
-            onClicked: banner.visible = false
+        Timer { id: toastTimer; interval: 5000; onTriggered: toast.visible = false }
+        TapHandler { onTapped: toast.visible = false }
+    }
+
+    // Modal dialog in reMarkable style: title, text, one button.
+    Item {
+        id: dialog
+        function show(t, body) { dTitle.text = t; dBody.text = body; visible = true }
+        anchors.fill: parent
+        visible: false
+        z: 100
+        Rectangle { anchors.fill: parent; color: "#99ffffff" }
+        MouseArea { anchors.fill: parent }
+        Rectangle {
+            anchors.centerIn: parent
+            width: parent.width * 0.78
+            height: dcol.implicitHeight + 8 * win.u
+            color: Theme.paper
+            border.color: Theme.ink
+            border.width: 3
+            radius: win.u
+            Column {
+                id: dcol
+                anchors.centerIn: parent
+                width: parent.width - 10 * win.u
+                spacing: 3 * win.u
+                Text { id: dTitle; width: parent.width; font.pixelSize: 3.8 * win.u; font.weight: Font.DemiBold; wrapMode: Text.Wrap }
+                Text { id: dBody; width: parent.width; font.pixelSize: 2.8 * win.u; wrapMode: Text.Wrap; color: Theme.muted }
+                RmButton { u: win.u; anchors.right: parent.right; primary: true; text: "OK"; onClicked: dialog.visible = false }
+            }
         }
     }
 }

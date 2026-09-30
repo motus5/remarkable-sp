@@ -1,70 +1,64 @@
 import QtQuick
+import RemarkableSP.Core
 
-// Worklog: tracked time per day and task (like SP's worklog / daily summary).
-Rectangle {
+// Worklog: tracked time per day and task (SP's worklog / daily summary).
+Item {
     id: root
     property real u: 10
     property var days: app.worklog(30)
-    signal closed()
-    color: "white"
 
     Connections {
         target: app
         function onDataChanged() { root.days = app.worklog(30) }
     }
 
-    EButton {
-        id: back
-        x: 2 * root.u; y: 2 * root.u
+    TopBar {
+        id: bar
+        width: parent.width
         u: root.u
-        text: "‹ Zurück"
-        onClicked: root.closed()
-    }
-    Text {
-        anchors.left: back.right
-        anchors.leftMargin: 2 * root.u
-        anchors.verticalCenter: back.verticalCenter
-        text: "Arbeitsprotokoll"
-        font.pixelSize: 4.2 * root.u
-        font.bold: true
+        title: "Arbeitsprotokoll"
+        subtitle: "Letzte 30 Tage"
     }
 
     ListView {
         id: list
-        anchors.top: back.bottom
-        anchors.topMargin: 2 * root.u
+        anchors.top: bar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.margins: 2 * root.u
+        anchors.leftMargin: 4 * root.u
+        anchors.rightMargin: 4 * root.u
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         model: root.days
-        spacing: 2 * root.u
+        spacing: 3 * root.u
         delegate: Column {
             width: list.width
-            spacing: 0.5 * root.u
-            Row {
+            spacing: 0.8 * root.u
+            Item {
                 width: parent.width
-                Text { width: parent.width * 0.7; text: app.formatDay(modelData.day) + "  (" + modelData.day + ")"; font.pixelSize: 3 * root.u; font.bold: true }
-                Text { width: parent.width * 0.3; horizontalAlignment: Text.AlignRight; text: app.formatDuration(modelData.total); font.pixelSize: 3 * root.u; font.bold: true }
+                height: 5 * root.u
+                Text { text: app.formatDay(modelData.day); font.pixelSize: 3.2 * root.u; font.weight: Font.DemiBold }
+                Text { anchors.right: parent.right; text: app.formatDuration(modelData.total); font.pixelSize: 3.2 * root.u; font.weight: Font.DemiBold }
             }
-            Rectangle { width: parent.width; height: 2; color: "black" }
+            Rectangle { width: parent.width; height: 2; color: Theme.ink }
             Repeater {
                 model: modelData.tasks
-                Row {
+                Item {
                     width: list.width
-                    Text { width: parent.width * 0.8; elide: Text.ElideRight; text: modelData.title; font.pixelSize: 2.6 * root.u }
-                    Text { width: parent.width * 0.2; horizontalAlignment: Text.AlignRight; text: app.formatDuration(modelData.ms); font.pixelSize: 2.6 * root.u }
+                    height: 5 * root.u
+                    Text { width: parent.width * 0.8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; text: modelData.title; font.pixelSize: 2.7 * root.u }
+                    Text { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: app.formatDuration(modelData.ms); font.pixelSize: 2.7 * root.u; color: Theme.muted }
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.rule }
                 }
             }
         }
-        Text {
+        Column {
             anchors.centerIn: parent
             visible: list.count === 0
-            text: "Noch keine erfasste Zeit."
-            font.pixelSize: 3.2 * root.u
-            color: "#666666"
+            spacing: 2 * root.u
+            Icon { anchors.horizontalCenter: parent.horizontalCenter; width: 12 * root.u; height: width; name: "worklog"; color: Theme.faint }
+            Text { text: "Noch keine erfasste Zeit"; font.pixelSize: 3.4 * root.u; color: Theme.muted }
         }
     }
 }

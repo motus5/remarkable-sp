@@ -1,42 +1,39 @@
 import QtQuick
 import RemarkableSP.Core
 
-// Writing area. Only pen (and mouse, for desktop development) draws; fingers
-// are ignored here, which gives palm rejection for free. The pen's eraser end
-// erases, or the pen tip erases while `eraserMode` is on.
-Rectangle {
+// Writing surface. Only the pen (and mouse, for desktop development) draws;
+// fingers pass through for paging and taps, which also gives palm rejection.
+// The eraser end of the Marker erases, or the tip while `eraserMode` is on.
+Item {
     id: root
     property alias source: canvas.source
     property alias canvas: canvas
+    property alias paperTemplate: canvas.paperTemplate
+    property alias lineSpacing: canvas.lineSpacing
     property bool editable: true
     property bool eraserMode: false
     property string placeholder: ""
     property real u: 10
+    signal stroked()
+    readonly property bool inputEnabled: editable && !(Window.window && Window.window.overlayOpen)
 
-    color: editable ? "white" : "transparent"
-    border.color: editable ? "black" : "transparent"
-    border.width: editable ? 2 : 0
     clip: true
 
     Text {
-        anchors.left: parent.left
+        x: root.u
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: root.u * 2
-        visible: canvas.empty && root.editable
+        visible: canvas.empty && root.editable && root.placeholder !== ""
         text: root.placeholder
-        color: "#888888"
-        font.pixelSize: root.u * 3
-        font.italic: true
+        color: Theme.faint
+        font.pixelSize: root.u * 3.2
     }
 
     InkCanvas {
         id: canvas
         anchors.fill: parent
-        z: 1 // above ruled lines added by users of InkField
-        penWidth: root.u * 0.35
+        penWidth: root.u * [0.18, 0.3, 0.55][Math.max(0, Math.min(2, app.penWidth - 1))]
     }
 
-    // Autosave a moment after the last stroke.
     Timer {
         id: saveTimer
         interval: 1500
@@ -48,8 +45,7 @@ Rectangle {
     }
 
     PointHandler {
-        id: pen
-        enabled: root.editable
+        enabled: root.inputEnabled
         acceptedDevices: PointerDevice.Stylus | PointerDevice.Mouse
         acceptedPointerTypes: PointerDevice.Pen | PointerDevice.Generic | PointerDevice.Cursor
         function pressure() { return point.pressure > 0 ? point.pressure : 0.5 }
@@ -61,6 +57,9 @@ Rectangle {
                     canvas.beginStroke(point.position.x, point.position.y, pressure())
             } else if (!root.eraserMode) {
                 canvas.endStroke()
+                root.stroked()
+            } else {
+                root.stroked()
             }
         }
         onPointChanged: {
@@ -74,10 +73,10 @@ Rectangle {
     }
 
     PointHandler {
-        id: eraser
-        enabled: root.editable
+        enabled: root.inputEnabled
         acceptedDevices: PointerDevice.Stylus
         acceptedPointerTypes: PointerDevice.Eraser
         onPointChanged: if (active) canvas.eraseAt(point.position.x, point.position.y, root.u * 2)
+        onActiveChanged: if (!active) root.stroked()
     }
 }

@@ -1,3 +1,4 @@
+#include "icon.h"
 #include "inkcanvas.h"
 #include "spstore.h"
 #include "syncengine.h"
@@ -5,6 +6,7 @@
 #include "workspace.h"
 
 #include <QDir>
+#include <QFont>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -17,6 +19,10 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("remarkable-sp"));
     app.setOrganizationName(QStringLiteral("remarkable-sp"));
     app.setApplicationVersion(QStringLiteral(RMSP_VERSION));
+    // The tablet ships Noto; the look depends on a clean sans like the stock UI.
+    QFont font(QStringLiteral("Noto Sans"));
+    font.setStyleHint(QFont::SansSerif);
+    app.setFont(font);
 
     QString dataDir = qEnvironmentVariable("RMSP_DATA_DIR");
     if (dataDir.isEmpty())
@@ -24,10 +30,11 @@ int main(int argc, char *argv[])
     QDir().mkpath(dataDir + QStringLiteral("/ink"));
 
     qmlRegisterType<InkCanvas>("RemarkableSP.Core", 1, 0, "InkCanvas");
+    qmlRegisterType<Icon>("RemarkableSP.Core", 1, 0, "Icon");
     qmlRegisterUncreatableType<TaskListModel>("RemarkableSP.Core", 1, 0, "TaskListModel", QStringLiteral("from app.tasks"));
 
     SpStore store(dataDir);
-    Workspace workspace(&store);
+    Workspace workspace(&store, dataDir + QStringLiteral("/settings.ini"));
     SyncEngine sync(&store, dataDir + QStringLiteral("/settings.ini"));
     Updater updater;
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &workspace, [&] { workspace.stopTracking(); });
@@ -52,7 +59,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("rmOsk"), fullscreen || qEnvironmentVariableIsSet("RMSP_OSK"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    engine.load(QUrl(QStringLiteral("qrc:/RemarkableSP/qml/Main.qml")));
+    engine.load(QUrl(QStringLiteral("qrc:/RemarkableSP/Main.qml")));
 
     return app.exec();
 }

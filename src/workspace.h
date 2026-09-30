@@ -41,6 +41,8 @@ public:
 
     void setContext(const QString &type, const QString &id, bool showDone);
     void setTrackingId(const QString &id);
+    int rowOf(const QString &id) const;
+    QString idAt(int row) const { return row >= 0 && row < m_rows.size() ? m_rows[row].id : QString(); }
     void bumpInk(const QString &id);
     void refresh();
 
@@ -84,9 +86,13 @@ class Workspace : public QObject
     Q_PROPERTY(int focusMinutes READ focusMinutes WRITE setFocusMinutes NOTIFY focusChanged)
     Q_PROPERTY(int focusRemaining READ focusRemaining NOTIFY focusChanged)
     Q_PROPERTY(QString dataDir READ dataDir CONSTANT)
+    // reMarkable-style pen settings, persisted: width 1 = fine, 2 = medium, 3 = thick
+    Q_PROPERTY(int penWidth READ penWidth WRITE setPenWidth NOTIFY prefsChanged)
+    // Paper template of the notes page: lined, grid, dots, blank
+    Q_PROPERTY(QString paperTemplate READ paperTemplate WRITE setPaperTemplate NOTIFY prefsChanged)
 
 public:
-    Workspace(SpStore *store, QObject *parent = nullptr);
+    Workspace(SpStore *store, const QString &settingsPath = {}, QObject *parent = nullptr);
     ~Workspace() override;
 
     TaskListModel *tasks() { return &m_list; }
@@ -109,6 +115,14 @@ public:
     void setFocusMinutes(int m);
     int focusRemaining() const;
     QString dataDir() const;
+    int penWidth() const { return m_penWidth; }
+    void setPenWidth(int w);
+    QString paperTemplate() const { return m_template; }
+    void setPaperTemplate(const QString &t);
+
+    // Paging through the current list like pages of a notebook.
+    Q_INVOKABLE QString neighbourTask(const QString &id, int delta) const;
+    Q_INVOKABLE int positionOf(const QString &id) const { return m_list.rowOf(id); }
 
     Q_INVOKABLE void openContext(const QString &type, const QString &id);
 
@@ -148,6 +162,7 @@ signals:
     void trackingChanged();
     void focusChanged();
     void focusFinished();
+    void prefsChanged();
 
 private:
     void onStoreChanged();
@@ -164,4 +179,7 @@ private:
     QTimer m_tick;
     int m_focusMinutes = 25;
     qint64 m_focusEnd = 0;
+    QString m_settingsPath;
+    int m_penWidth = 2;
+    QString m_template = QStringLiteral("lined");
 };

@@ -12,7 +12,7 @@ Rectangle {
 
     color: "white"
     height: col.implicitHeight + 3 * u
-    Rectangle { width: parent.width; height: Math.max(2, root.u / 4); color: "black" }
+    Rectangle { width: parent.width; height: 1; color: Theme.rule }
 
     readonly property var letters: [
         "1234567890ß", "qwertzuiopü", "asdfghjklöä", "yxcvbnm.-@"
@@ -81,14 +81,14 @@ Rectangle {
         width: (7.4 * root.u) * wide + (wide - 1) * 0.6 * root.u
         height: 7 * root.u
         radius: root.u * 0.6
-        color: checked ? "black" : "white"
-        border.color: "black"
-        border.width: 2
+        color: checked ? Theme.ink : Theme.paper
+        border.color: checked ? Theme.ink : Theme.faint
+        border.width: 1.5
         Text {
             id: t
             anchors.centerIn: parent
             font.pixelSize: 3.2 * root.u
-            color: key.checked ? "white" : "black"
+            color: key.checked ? Theme.paper : Theme.ink
         }
         TapHandler { onTapped: key.clicked() }
     }

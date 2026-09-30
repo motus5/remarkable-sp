@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QLocale>
 #include <QSaveFile>
+#include <QSettings>
 #include <QTextStream>
 
 namespace {
@@ -102,6 +103,14 @@ void TaskListModel::setTrackingId(const QString &id)
         emit dataChanged(index(0), index(m_rows.size() - 1), {IsTrackingRole});
 }
 
+int TaskListModel::rowOf(const QString &id) const
+{
+    for (int i = 0; i < m_rows.size(); ++i)
+        if (m_rows[i].id == id)
+            return i;
+    return -1;
+}
+
 void TaskListModel::bumpInk(const QString &id)
 {
     ++m_inkRev[id];
@@ -177,11 +186,18 @@ void TaskListModel::refresh()
 // ---------------------------------------------------------------------------
 // Workspace
 
-Workspace::Workspace(SpStore *store, QObject *parent)
+Workspace::Workspace(SpStore *store, const QString &settingsPath, QObject *parent)
     : QObject(parent)
     , m_store(store)
     , m_list(store)
+    , m_settingsPath(settingsPath)
 {
+    if (!m_settingsPath.isEmpty()) {
+        QSettings s(m_settingsPath, QSettings::IniFormat);
+        m_penWidth = qBound(1, s.value(QStringLiteral("ui/penWidth"), m_penWidth).toInt(), 3);
+        m_template = s.value(QStringLiteral("ui/paperTemplate"), m_template).toString();
+        m_focusMinutes = s.value(QStringLiteral("ui/focusMinutes"), m_focusMinutes).toInt();
+    }
     m_tick.setInterval(kTickMs);
     connect(&m_tick, &QTimer::timeout, this, [this] {
         commitTracking();
@@ -534,7 +550,36 @@ void Workspace::setFocusMinutes(int m)
     if (m == m_focusMinutes)
         return;
     m_focusMinutes = m;
+    if (!m_settingsPath.isEmpty())
+        QSettings(m_settingsPath, QSettings::IniFormat).setValue(QStringLiteral("ui/focusMinutes"), m);
     emit focusChanged();
+}
+
+void Workspace::setPenWidth(int w)
+{
+    w = qBound(1, w, 3);
+    if (w == m_penWidth)
+        return;
+    m_penWidth = w;
+    if (!m_settingsPath.isEmpty())
+        QSettings(m_settingsPath, QSettings::IniFormat).setValue(QStringLiteral("ui/penWidth"), w);
+    emit prefsChanged();
+}
+
+void Workspace::setPaperTemplate(const QString &t)
+{
+    if (t == m_template)
+        return;
+    m_template = t;
+    if (!m_settingsPath.isEmpty())
+        QSettings(m_settingsPath, QSettings::IniFormat).setValue(QStringLiteral("ui/paperTemplate"), t);
+    emit prefsChanged();
+}
+
+QString Workspace::neighbourTask(const QString &id, int delta) const
+{
+    const int row = m_list.rowOf(id);
+    return row < 0 ? QString() : m_list.idAt(row + delta);
 }
 
 int Workspace::focusRemaining() const

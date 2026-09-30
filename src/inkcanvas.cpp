@@ -42,6 +42,7 @@ QPointF InkCanvas::norm(qreal x, qreal y) const
 
 void InkCanvas::pushUndo()
 {
+    m_redo.clear();
     m_undo.append(m_strokes);
     if (m_undo.size() > kMaxUndo)
         m_undo.removeFirst();
@@ -143,7 +144,19 @@ void InkCanvas::undo()
 {
     if (m_undo.isEmpty())
         return;
+    m_redo.append(m_strokes);
     m_strokes = m_undo.takeLast();
+    setModified(true);
+    rebuildBuffer();
+    emit strokesChanged();
+}
+
+void InkCanvas::redo()
+{
+    if (m_redo.isEmpty())
+        return;
+    m_undo.append(m_strokes);
+    m_strokes = m_redo.takeLast();
     setModified(true);
     rebuildBuffer();
     emit strokesChanged();
@@ -173,6 +186,7 @@ void InkCanvas::reload()
 {
     m_strokes.clear();
     m_undo.clear();
+    m_redo.clear();
     QFile f(m_source);
     if (!m_source.isEmpty() && f.open(QIODevice::ReadOnly))
         m_strokes = ink::deserialize(f.readAll());
@@ -204,8 +218,54 @@ void InkCanvas::rebuildBuffer()
     update();
 }
 
+void InkCanvas::setPaperTemplate(const QString &t)
+{
+    if (t == m_template)
+        return;
+    m_template = t;
+    emit paperChanged();
+    update();
+}
+
+void InkCanvas::setLineSpacing(qreal s)
+{
+    if (qFuzzyCompare(s, m_spacing))
+        return;
+    m_spacing = s;
+    emit paperChanged();
+    update();
+}
+
 void InkCanvas::paint(QPainter *painter)
 {
+    if (m_spacing > 4 && m_template != QLatin1String("blank")) {
+        // Light grey like the reMarkable templates; only the dirty area is drawn.
+        const QRectF clip = painter->clipBoundingRect().isEmpty() ? boundingRect() : painter->clipBoundingRect();
+        const qreal sp = m_spacing;
+        const qreal x0 = sp * 0.5;
+        const qreal x1 = width() - sp * 0.5;
+        if (m_template == QLatin1String("dots")) {
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(0x90, 0x90, 0x90));
+            const qreal r = qMax(1.0, sp / 22);
+            for (qreal y = sp; y < height(); y += sp) {
+                if (y < clip.top() - sp || y > clip.bottom() + sp)
+                    continue;
+                for (qreal x = x0; x <= x1; x += sp)
+                    painter->drawEllipse(QPointF(x, y), r, r);
+            }
+        } else {
+            painter->setPen(QPen(QColor(0xc4, 0xc4, 0xc4), 1));
+            for (qreal y = sp; y < height(); y += sp)
+                if (y >= clip.top() - 1 && y <= clip.bottom() + 1)
+                    painter->drawLine(QPointF(m_template == QLatin1String("grid") ? 0 : x0, y),
+                                      QPointF(m_template == QLatin1String("grid") ? width() : x1, y));
+            if (m_template == QLatin1String("grid"))
+                for (qreal x = sp / 2; x < width(); x += sp)
+                    painter->drawLine(QPointF(x, clip.top()), QPointF(x, clip.bottom()));
+        }
+    }
+
     if (!m_buffer.isNull())
         painter->drawImage(0, 0, m_buffer);
 }
