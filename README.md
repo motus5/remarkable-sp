@@ -5,9 +5,14 @@ Stift und **Zwei-Wege-Sync** zu [Super Productivity](https://github.com/johannes
 (Desktop, Web, Handy).
 
 <p>
-<img src="docs/screenshot-liste.png" width="31%">
-<img src="docs/screenshot-menu.png" width="31%">
-<img src="docs/screenshot-detail.png" width="31%">
+<img src="docs/liste.png" width="32%">
+<img src="docs/navigation.png" width="32%">
+<img src="docs/kontextmenue.png" width="32%">
+</p>
+<p>
+<img src="docs/notizbuch.png" width="32%">
+<img src="docs/vollbild.png" width="32%">
+<img src="docs/einstellungen.png" width="32%">
 </p>
 
 **Warum kein Electron-Port?** Super Productivity ist eine Angular-App in Electron. Auf dem
@@ -25,6 +30,35 @@ Technik wie die reMarkable-Oberfläche. Datenmodell und Sync-Protokoll sind die 
 | **Sync** | WebDAV, Nextcloud oder Ordner – derselbe Sync-Ordner wie in SP, optional gzip und Ende-zu-Ende-Verschlüsselung |
 | **Updates** | In-App-Update aus GitHub-Releases mit Prüfsumme; die alte Version bleibt als `.old` erhalten |
 | **E-Ink** | keine Animationen, Schwarz-Weiß, minütliche statt sekündliche Uhr, Blättern statt Scrollen, Tinte wird nur in kleinen Bereichen neu gezeichnet |
+
+## Bedienung wie auf dem reMarkable
+
+Oberfläche und Bedienung sind der reMarkable-Software nachempfunden:
+
+- **Bibliothek:** links eine Icon-Leiste (Heute, Projekte, Tags, Protokoll, Fokus, Sync,
+  Einstellungen). Der runde Knopf klappt sie zur Seitenleiste mit allen Projekten und Tags aus.
+- **Liste:** Oben stehen ein großer Titel, die Tabs „Offen / Erledigt“ und der runde ＋-Knopf.
+  Geblättert wird **seitenweise per Wischen** (oder ‹ › mit Seitenanzeige) statt per
+  Scrollen. So baut sich das E-Ink-Display nur einmal pro Seite neu auf.
+- **Lange drücken** auf eine Aufgabe öffnet das Kontextmenü (Erledigt, Zeit, Heute/Morgen,
+  Löschen). Menüs sind weiße Karten mit schwarzem Rahmen, ohne Schatten und ohne Animation.
+- **Aufgabe = Notizbuchseite:**
+  - Links steht die Werkzeugleiste: Stift (Fein/Mittel/Breit), Radierer, Rückgängig,
+    Wiederholen, Vorlage (Liniert/Kariert/Punkte/Leer), Erledigt, Zeiterfassung, Planen, Mehr
+    und Schließen.
+  - Der runde Knopf oben links klappt die Leiste weg, dann ist die ganze Seite Papier.
+  - Der Titel wird auf die Überschriftlinie geschrieben, die Notizen auf das Vorlagenpapier.
+  - Die Eigenschaften (Planung, Schätzung, Priorität, Projekt, Tags) sind Chips unter dem Titel.
+  - **Wischen nach links/rechts** blättert zur nächsten bzw. vorigen Aufgabe wie zur nächsten
+    Seite, unten steht „2 / 7“.
+- **Stift schreibt, Finger bedient:**
+  - Nur der Stift erzeugt Tinte, der Finger blättert und tippt (Handballen-Erkennung).
+  - Die Radierer-Spitze des Marker Plus wird erkannt.
+  - Solange ein Menü offen ist, schreibt der Stift nicht aufs Papier.
+- **Bildschirmtastatur** (QWERTZ) für Titel und Einstellungen. Das ⌨-Symbol an Feldern und
+  an der Titellinie öffnet sie.
+- Schrift **Noto Sans** (auf dem Gerät vorhanden), eigene Linien-Icons, nur Schwarz,
+  Weiß und ein helles Grau für Linien.
 
 ## Sync mit Super Productivity
 
@@ -103,8 +137,9 @@ Umgebungsvariablen: `RMSP_DATA_DIR` (Datenordner), `RMSP_FULLSCREEN`, `RMSP_SOFT
 | `src/syncfile.*` | Dateiformat: `pf_`-Präfix, gzip, Argon2id + AES-256-GCM |
 | `src/workspace.*` | Kontexte (Heute/Projekt/Tag), Listenmodell, Zeiterfassung, Fokus, Arbeitsprotokoll |
 | `src/updater.*` | Selbst-Update aus GitHub-Releases |
-| `src/inkcanvas.*`, `src/stroke.*` | Zeichenfläche und Strich-Format |
-| `qml/` | Oberfläche (Liste, Detail, Menü, Einstellungen, Protokoll, Tastatur) |
+| `src/inkcanvas.*`, `src/stroke.*` | Zeichenfläche (Druck, Radierer, Undo/Redo, Papiervorlagen) und Strich-Format |
+| `src/icon.*` | Linien-Icons im reMarkable-Stil, direkt gezeichnet (kein SVG-Plugin nötig) |
+| `qml/` | Oberfläche: `NavRail`, `TopBar`, `TaskList`/`TaskRow`, `TaskDetail` (Notizbuchseite), `Popover`, `Keyboard`, `Theme` |
 | `third_party/argon2` | Argon2-Referenzimplementierung (CC0/Apache-2.0) |
 
 ## Grenzen / nächste Schritte
