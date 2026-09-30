@@ -72,7 +72,8 @@ signals:
     void pendingChanged();
 
 private:
-    void dispatch(const QString &code, const QString &opType, const QString &entityId, const QJsonObject &payload);
+    void dispatch(const QString &code, const QString &opType, const QString &entityId, const QJsonObject &payload,
+                  const QStringList &extraEntityIds = {});
     void load();
     void migrateLegacyTasks();
 

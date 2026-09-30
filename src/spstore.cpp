@@ -391,7 +391,8 @@ bool SpStore::applyOp(QJsonObject &state, const QJsonObject &op)
     return true;
 }
 
-void SpStore::dispatch(const QString &code, const QString &opType, const QString &entityId, const QJsonObject &payload)
+void SpStore::dispatch(const QString &code, const QString &opType, const QString &entityId, const QJsonObject &payload,
+                       const QStringList &extraEntityIds)
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     QJsonObject op{
@@ -400,7 +401,7 @@ void SpStore::dispatch(const QString &code, const QString &opType, const QString
         {"o", opType},
         {"e", "TASK"},
         {"d", entityId},
-        {"ds", QJsonArray{entityId}},
+        {"ds", QJsonArray::fromStringList(QStringList{entityId} + extraEntityIds)},
         {"p", payload},
         {"c", m_clientId},
         {"t", now},
@@ -411,7 +412,7 @@ void SpStore::dispatch(const QString &code, const QString &opType, const QString
     // Coalesce with the op queued last for the same task where SP semantics
     // allow it: additive time (KT) and shallow task updates (HU). This keeps
     // minute-wise time tracking from flooding the 2000-op buffer.
-    if (!m_pending.isEmpty()) {
+    if (!m_pending.isEmpty() && extraEntityIds.isEmpty()) {
         QJsonObject last = m_pending.last().toObject();
         if (last.value(QStringLiteral("a")).toString() == code && last.value(QStringLiteral("d")).toString() == entityId) {
             QJsonObject lp = last.value(QStringLiteral("p")).toObject();
@@ -428,7 +429,8 @@ void SpStore::dispatch(const QString &code, const QString &opType, const QString
                 change.insert(QStringLiteral("changes"), cc);
                 lp.insert(QStringLiteral("entityChanges"), QJsonArray{change});
                 merged = true;
-            } else if (code == QLatin1String("HU")) {
+            } else if (code == QLatin1String("HU") && !la.contains(QStringLiteral("projectMoveSubTaskIds"))
+                       && !na.contains(QStringLiteral("projectMoveSubTaskIds"))) {
                 QJsonObject lt = la.value(QStringLiteral("task")).toObject();
                 QJsonObject lc = lt.value(QStringLiteral("changes")).toObject();
                 const QJsonObject nc = na.value(QStringLiteral("task")).toObject().value(QStringLiteral("changes")).toObject();
@@ -501,7 +503,16 @@ void SpStore::updateTask(const QString &id, const QJsonObject &changes)
     if (c.value(QStringLiteral("isDone")).toBool() && !c.contains(QStringLiteral("doneOn")))
         c.insert(QStringLiteral("doneOn"), QDateTime::currentMSecsSinceEpoch());
     QJsonObject a{{"task", QJsonObject{{"id", id}, {"changes", c}}}};
-    dispatch(QStringLiteral("HU"), QStringLiteral("UPD"), id, QJsonObject{{"actionPayload", a}, {"entityChanges", QJsonArray()}});
+    QStringList moved;
+    if (c.contains(QStringLiteral("projectId"))) {
+        // Like SP's TaskService.update: name the subtasks that move along, they
+        // are part of the op's entity footprint for conflict resolution.
+        for (const QString &s : strings(task(id).value(QStringLiteral("subTaskIds"))))
+            if (hasEntity(m_state, kTask, s))
+                moved.append(s);
+        a.insert(QStringLiteral("projectMoveSubTaskIds"), QJsonArray::fromStringList(moved));
+    }
+    dispatch(QStringLiteral("HU"), QStringLiteral("UPD"), id, QJsonObject{{"actionPayload", a}, {"entityChanges", QJsonArray()}}, moved);
 }
 
 void SpStore::deleteTask(const QString &id)

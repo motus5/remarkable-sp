@@ -58,6 +58,7 @@ QJsonObject desktopFile()
         {"archiveYoung", QJsonObject{{"task", QJsonObject{{"ids", QJsonArray()}, {"entities", QJsonObject()}}}}},
         {"archiveOld", QJsonObject{{"marker", "old"}}},
         {"recentOps", QJsonArray{op}}, {"oldestOpSyncVersion", 3},
+        {"snapshotBaseClock", QJsonObject{{"E_desk1", 5}}},
     };
 }
 
@@ -168,6 +169,20 @@ private slots:
         QVERIFY(syncfile::decode(enc).needsPassword);
     }
 
+    void decryptsFileWrittenBySp()
+    {
+        if (!syncfile::encryptionSupported())
+            QSKIP("built without crypto");
+        // Produced by Super Productivity's own encrypt()+gzip code (password "geheim").
+        QFile f(QFINDTESTDATA("fixtures/sp-encrypted-by-sp.json"));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const auto d = syncfile::decode(f.readAll(), "geheim");
+        QVERIFY2(d.error.isEmpty(), qPrintable(d.error));
+        QVERIFY(d.compressed && d.encrypted);
+        QCOMPARE(d.json.value("version").toInt(), 2);
+        QVERIFY(d.json.value("state").toObject().contains("task"));
+    }
+
     void storeOps()
     {
         QTemporaryDir dir;
@@ -236,7 +251,12 @@ private slots:
         const QString mine = ws.addTask("From tablet");
         ws.toggleDone("d1");
         store.addTimeSpent("d2", SpStore::todayStr(), 15 * 60000);
+        const QString mineSub = ws.addSubTask(mine, "Unteraufgabe");
         ws.setProject(mine, "P1");
+        QCOMPARE(store.task(mineSub).value("projectId").toString(), QString("P1"));
+        const QJsonObject moveOp = store.pendingOps().last().toObject();
+        QCOMPARE(moveOp.value("p").toObject().value("actionPayload").toObject().value("projectMoveSubTaskIds").toArray(), QJsonArray{mineSub});
+        QCOMPARE(moveOp.value("ds").toArray(), (QJsonArray{mine, mineSub}));
         QVERIFY(store.pendingCount() >= 3);
         QVERIFY2(engine.syncNow(), qPrintable(engine.status()));
         QCOMPARE(store.pendingCount(), 0);
@@ -246,6 +266,7 @@ private slots:
         QCOMPARE(file.value("syncVersion").toInt(), 4);
         QCOMPARE(file.value("clientId").toString(), store.clientId());
         QCOMPARE(file.value("archiveOld").toObject().value("marker").toString(), QString("old"));
+        QCOMPARE(file.value("snapshotBaseClock").toObject().value("E_desk1").toInt(), 5);
         const QJsonObject clock = file.value("vectorClock").toObject();
         QCOMPARE(clock.value("E_desk1").toInt(), 7);
         QVERIFY(clock.value(store.clientId()).toInt() >= 3);
