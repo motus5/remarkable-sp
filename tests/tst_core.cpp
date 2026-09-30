@@ -2,6 +2,7 @@
 #include "spimport.h"
 #include "stroke.h"
 #include "taskmodel.h"
+#include "updater.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -72,6 +73,14 @@ private slots:
         TaskModel reloaded(dir.path());
         QCOMPARE(reloaded.tasks().size(), 2);
         QVERIFY(reloaded.tasks()[0].timeSpent >= 5 * 60 * 1000);
+    }
+
+    void versionCompare()
+    {
+        QVERIFY(Updater::compareVersions("v0.2.0", "0.1.9") > 0);
+        QCOMPARE(Updater::compareVersions("v1.0.0", "1.0.0"), 0);
+        QVERIFY(Updater::compareVersions("0.1.0", "0.1.1") < 0);
+        QVERIFY(Updater::assetName().startsWith("remarkable-sp-"));
     }
 
     void superProductivityImport()

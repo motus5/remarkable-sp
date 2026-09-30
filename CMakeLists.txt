@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Quick)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Quick Network)
 
 set(CORE_SOURCES
     src/stroke.h src/stroke.cpp
@@ -13,11 +13,13 @@ set(CORE_SOURCES
     src/task.h src/task.cpp
     src/taskmodel.h src/taskmodel.cpp
     src/spimport.h src/spimport.cpp
+    src/updater.h src/updater.cpp
 )
 
 add_library(rmsp_core STATIC ${CORE_SOURCES})
 target_include_directories(rmsp_core PUBLIC src)
-target_link_libraries(rmsp_core PUBLIC Qt6::Core Qt6::Gui Qt6::Quick)
+target_link_libraries(rmsp_core PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::Network)
+target_compile_definitions(rmsp_core PUBLIC RMSP_VERSION="${PROJECT_VERSION}")
 
 qt_add_executable(remarkable-sp src/main.cpp)
 target_link_libraries(remarkable-sp PRIVATE rmsp_core)
