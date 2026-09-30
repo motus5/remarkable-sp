@@ -1,0 +1,7 @@
+{
+  "displayName": "Aufgaben (SP)",
+  "description": "Aufgaben, Handschrift & Zeiterfassung",
+  "bin": "/opt/bin/remarkable-sp",
+  "type": "foreground",
+  "flags": ["exclusive"]
+}
