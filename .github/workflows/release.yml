@@ -1,0 +1,41 @@
+name: Release
+
+# Push a tag like v0.3.0 (matching project(VERSION) in CMakeLists.txt).
+# The in-app updater downloads "remarkable-sp-<arch>" plus "<asset>.sha256"
+# from the latest release. This workflow builds the x86_64 (desktop) binary;
+# tablet binaries (arm = rM1/rM2, arm64 = Paper Pro/Move) are built with the
+# device SDK and attached via deploy/release-device.sh.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-declarative-dev qml6-module-qtquick \
+            qml6-module-qtquick-window qml6-module-qtqml-workerscript zlib1g-dev libssl-dev
+      - name: Check version
+        run: |
+          v=$(sed -n 's/^project(remarkable-sp VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          test "v$v" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} != CMake version $v"; exit 1; }
+      - name: Build and test
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+          QT_QPA_PLATFORM=offscreen ./build/rmsp_tests
+      - name: Package
+        run: |
+          mkdir dist
+          cp build/remarkable-sp dist/remarkable-sp-x86_64
+          cd dist && sha256sum remarkable-sp-x86_64 > remarkable-sp-x86_64.sha256
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes
