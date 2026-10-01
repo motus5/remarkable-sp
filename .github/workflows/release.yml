@@ -7,6 +7,15 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual start (Actions tab or API): creates the tag on the chosen branch.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release-Tag, z. B. v0.3.1 (muss zur Version in CMakeLists.txt passen)"
+        required: true
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -24,7 +33,7 @@ jobs:
       - name: Check version
         run: |
           v=$(sed -n 's/^project(remarkable-sp VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          test "v$v" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} != CMake version $v"; exit 1; }
+          test "v$v" = "$TAG" || { echo "Tag $TAG != CMake version $v"; exit 1; }
       - name: Build and test
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
@@ -37,7 +46,7 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes
+        run: gh release create "$TAG" dist/* --title "$TAG" --target "$GITHUB_SHA" --generate-notes
 
   rm1:
     needs: release
@@ -71,4 +80,4 @@ jobs:
       - name: Attach to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist-rm1/* --clobber
+        run: gh release upload "$TAG" dist-rm1/* --clobber
