@@ -1,11 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
-project(remarkable-sp VERSION 0.3.0 LANGUAGES C CXX)
+project(remarkable-sp VERSION 0.3.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Quick Network)
+# Private QPA API to inject pen events (src/peninput.cpp); since Qt 6.10 a
+# separate package, before part of Qt6Gui.
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.10)
+    find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
+endif()
 
 set(CORE_SOURCES
     src/stroke.h src/stroke.cpp
@@ -17,11 +22,12 @@ set(CORE_SOURCES
     src/syncengine.h src/syncengine.cpp
     src/updater.h src/updater.cpp
     src/icon.h src/icon.cpp
+    src/peninput.h src/peninput.cpp
 )
 
 add_library(rmsp_core STATIC ${CORE_SOURCES})
 target_include_directories(rmsp_core PUBLIC src)
-target_link_libraries(rmsp_core PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::Network)
+target_link_libraries(rmsp_core PUBLIC Qt6::Core Qt6::Gui Qt6::GuiPrivate Qt6::Quick Qt6::Network)
 target_compile_definitions(rmsp_core PUBLIC RMSP_VERSION="${PROJECT_VERSION}")
 
 find_package(ZLIB REQUIRED)
@@ -49,6 +55,16 @@ endif()
 
 qt_add_executable(remarkable-sp src/main.cpp)
 target_link_libraries(remarkable-sp PRIVATE rmsp_core)
+qt_add_resources(remarkable-sp "fonts"
+    PREFIX "/fonts"
+    BASE "third_party/fonts"
+    FILES third_party/fonts/NotoSans-Regular.ttf third_party/fonts/NotoSans-Bold.ttf)
+
+# Release asset the in-app updater looks for (see src/updater.cpp).
+set(RMSP_UPDATE_ASSET "" CACHE STRING "Updater asset name, e.g. remarkable-sp-rm1")
+if(RMSP_UPDATE_ASSET)
+    target_compile_definitions(rmsp_core PUBLIC RMSP_UPDATE_ASSET="${RMSP_UPDATE_ASSET}")
+endif()
 
 set(RMSP_QML_FILES
     qml/Main.qml

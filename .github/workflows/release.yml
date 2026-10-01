@@ -1,10 +1,9 @@
 name: Release
 
-# Push a tag like v0.3.0 (matching project(VERSION) in CMakeLists.txt).
-# The in-app updater downloads "remarkable-sp-<arch>" plus "<asset>.sha256"
-# from the latest release. This workflow builds the x86_64 (desktop) binary;
-# tablet binaries (arm = rM1/rM2, arm64 = Paper Pro/Move) are built with the
-# device SDK and attached via deploy/release-device.sh.
+# Push a tag like v0.3.1 (matching project(VERSION) in CMakeLists.txt).
+# Builds the desktop binary and, with the official reMarkable 1 SDK for
+# firmware 3.26.0.68, the rm1 packages. The in-app updater downloads
+# "remarkable-sp-<arch|rm1>" plus "<asset>.sha256" from the latest release.
 on:
   push:
     tags: ["v*"]
@@ -20,7 +19,7 @@ jobs:
       - name: Install Qt 6
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-declarative-dev qml6-module-qtquick \
+          sudo apt-get install -y qt6-base-dev qt6-base-private-dev qt6-declarative-dev qml6-module-qtquick \
             qml6-module-qtquick-window qml6-module-qtqml-workerscript zlib1g-dev libssl-dev
       - name: Check version
         run: |
@@ -39,3 +38,37 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${GITHUB_REF_NAME}" dist/* --title "${GITHUB_REF_NAME}" --generate-notes
+
+  rm1:
+    needs: release
+    runs-on: ubuntu-24.04
+    env:
+      # https://developer.remarkable.com/links – reMarkable OS 3.26.0.68, code name rm1
+      SDK_URL: https://storage.googleapis.com/remarkable-codex-toolchain/3.26.0.68/rm1/remarkable-production-image-5.6.75-rm1-public-x86_64-toolchain.sh
+      SDK_MD5_B64: NXZwVW2h3W/VMBsxiuERpg==
+      # reMarkable's epaper platform plugin, bundled as fallback only
+      EPAPER_QPA_COMMIT: 0f4658dfc3a0a9687b0b74ea3b4b185d3f30e476
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache SDK installer
+        uses: actions/cache@v4
+        with:
+          path: ~/sdk-installer
+          key: rm1-sdk-3.26.0.68
+      - name: Download and verify SDK
+        run: |
+          mkdir -p ~/sdk-installer && cd ~/sdk-installer
+          [ -f sdk.sh ] || curl -fsSL -o sdk.sh "$SDK_URL"
+          test "$(openssl md5 -binary sdk.sh | base64)" = "$SDK_MD5_B64"
+      - name: Install SDK
+        run: sh ~/sdk-installer/sdk.sh -y -d ~/sdk-rm1 > /dev/null
+      - name: Fetch epaper-qpa
+        run: |
+          git clone -q https://github.com/reMarkable/epaper-qpa ~/epaper-qpa
+          git -C ~/epaper-qpa checkout -q "$EPAPER_QPA_COMMIT"
+      - name: Build and package
+        run: EPAPER_QPA=~/epaper-qpa device/package-rm1.sh ~/sdk-rm1 dist-rm1
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist-rm1/* --clobber

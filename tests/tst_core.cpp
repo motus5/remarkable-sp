@@ -1,4 +1,5 @@
 #include "inkcanvas.h"
+#include "peninput.h"
 #include "spstore.h"
 #include "stroke.h"
 #include "syncbackend.h"
@@ -127,6 +128,54 @@ private slots:
         QCOMPARE(c.strokes().size(), 1);
         c.reload();
         QCOMPARE(c.strokes().size(), 1);
+    }
+
+    void penTransform()
+    {
+        PenInput pen;
+        pen.setRanges(20967, 15725, 4095);
+        const QSizeF screen(1404, 1872);
+        // default rM mapping: raw Y -> screen X, raw X -> inverted screen Y
+        QCOMPARE(pen.mapToScreen(20967, 0, screen), QPointF(0, 0));
+        QCOMPARE(pen.mapToScreen(0, 15725, screen), QPointF(1404, 1872));
+        pen.setTransform("");
+        QCOMPARE(pen.mapToScreen(20967, 15725, screen), QPointF(1404, 1872));
+        pen.setTransform("invx");
+        QCOMPARE(pen.mapToScreen(0, 0, screen), QPointF(1404, 0));
+    }
+
+    void penDeliversTabletEvents()
+    {
+        struct Window : QWindow {
+            QList<QPair<QEvent::Type, QPointingDevice::PointerType>> seen;
+            qreal lastPressure = -1;
+            void tabletEvent(QTabletEvent *e) override
+            {
+                seen.append({e->type(), e->pointerType()});
+                lastPressure = e->pressure();
+                e->accept();
+            }
+        } w;
+        w.resize(200, 200);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        PenInput pen;
+        pen.setRanges(1000, 1000, 100);
+        auto syn = [&] { pen.feed(0x00, 0, 0); }; // EV_SYN/SYN_REPORT
+        pen.feed(0x01, 0x140, 1); pen.feed(0x03, 0x00, 500); pen.feed(0x03, 0x01, 500); syn(); // hover
+        pen.feed(0x01, 0x14a, 1); pen.feed(0x03, 0x18, 50); syn();                          // touch
+        pen.feed(0x03, 0x00, 400); syn();                                                    // move
+        pen.feed(0x01, 0x14a, 0); pen.feed(0x03, 0x18, 0); syn();                           // lift
+        pen.feed(0x01, 0x140, 0); syn();                                                     // leave
+        pen.feed(0x01, 0x141, 1); pen.feed(0x01, 0x14a, 1); pen.feed(0x03, 0x18, 80); syn(); // eraser down
+        QTRY_VERIFY(w.seen.size() >= 4);
+        QStringList kinds;
+        for (const auto &s : std::as_const(w.seen))
+            kinds << QString::number(int(s.first));
+        QVERIFY2(kinds.contains(QString::number(int(QEvent::TabletPress))), qPrintable(kinds.join(',')));
+        QVERIFY(kinds.contains(QString::number(int(QEvent::TabletRelease))));
+        QCOMPARE(w.seen.last().second, QPointingDevice::PointerType::Eraser);
+        QVERIFY(qAbs(w.lastPressure - 0.8) < 0.01);
     }
 
     void versionCompare()

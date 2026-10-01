@@ -1,5 +1,6 @@
 #include "icon.h"
 #include "inkcanvas.h"
+#include "peninput.h"
 #include "spstore.h"
 #include "syncengine.h"
 #include "updater.h"
@@ -7,11 +8,14 @@
 
 #include <QDir>
 #include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QStandardPaths>
+
+#include <memory>
 
 int main(int argc, char *argv[])
 {
@@ -19,7 +23,9 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("remarkable-sp"));
     app.setOrganizationName(QStringLiteral("remarkable-sp"));
     app.setApplicationVersion(QStringLiteral(RMSP_VERSION));
-    // The tablet ships Noto; the look depends on a clean sans like the stock UI.
+    // Bundled Noto Sans: the device image ships no fonts for third-party apps.
+    QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/NotoSans-Regular.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/NotoSans-Bold.ttf"));
     QFont font(QStringLiteral("Noto Sans"));
     font.setStyleHint(QFont::SansSerif);
     app.setFont(font);
@@ -46,9 +52,22 @@ int main(int argc, char *argv[])
         || platform == QLatin1String("cocoa") || platform == QLatin1String("windows")
         || platform == QLatin1String("offscreen");
     const bool fullscreen = qEnvironmentVariableIsSet("RMSP_FULLSCREEN") || !desktop;
-    // The tablets have no usable GPU for Qt Quick: render in software.
-    if (!desktop || qEnvironmentVariableIsSet("RMSP_SOFTWARE"))
+    const bool epaper = platform == QLatin1String("epaper");
+    if (epaper) {
+        // reMarkable's own scene graph backend (libqsgepaper) drives the e-ink refresh.
+        if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND"))
+            QQuickWindow::setSceneGraphBackend(QStringLiteral("epaper"));
+    } else if (!desktop || qEnvironmentVariableIsSet("RMSP_SOFTWARE")) {
+        // No usable GPU on other embedded platforms: render in software.
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+    }
+
+    // The epaper platform plugin handles touch only; read the pen ourselves.
+    std::unique_ptr<PenInput> pen;
+    if (epaper || qEnvironmentVariableIsSet("RMSP_PEN_DEVICE")) {
+        pen = std::make_unique<PenInput>();
+        pen->open(qEnvironmentVariable("RMSP_PEN_DEVICE"));
+    }
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("app"), &workspace);

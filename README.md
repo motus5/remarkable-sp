@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/motus5/remarkable-sp/actions/workflows/ci.yml"><img src="https://github.com/motus5/remarkable-sp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/reMarkable-1%20%7C%202-black" alt="reMarkable 1 | 2">
+  <img src="https://img.shields.io/badge/reMarkable-1%20(2%20folgt)-black" alt="reMarkable 1">
   <img src="https://img.shields.io/badge/Qt-6%20%2F%20QML-41cd52" alt="Qt 6">
   <img src="https://img.shields.io/badge/Lizenz-MIT-blue" alt="MIT">
 </p>
@@ -57,28 +57,38 @@
 
 ## Installation auf dem reMarkable
 
-> **Status:** Die App läuft am Linux-Desktop und ist gegen WebDAV und das Sync-Format von
-> Super Productivity 19 getestet. Auf echter reMarkable-Hardware ist sie noch **nicht erprobt**.
-> Fertige Geräte-Builds erscheinen unter [Releases](https://github.com/motus5/remarkable-sp/releases).
+> **Status:** Am Linux-Desktop getestet, Sync gegen WebDAV und das Format von Super Productivity 19.
+> Die rM1-Version ist mit dem offiziellen SDK gebaut und unter Emulation geprüft, auf echter
+> Hardware aber **noch nicht erprobt** (siehe [TEST-RM1.md](TEST-RM1.md)).
 
-| Gerät | Datei im Release | Hinweis |
+| Gerät | Release-Datei | Stand |
 |---|---|---|
-| reMarkable 1 | `remarkable-sp-arm` | Framebuffer direkt nutzbar |
-| reMarkable 2 | `remarkable-sp-arm` | braucht zusätzlich `rm2fb` bzw. `qtfb` |
-| Paper Pro / Move | `remarkable-sp-arm64` | ungetestet |
+| reMarkable 1 (Firmware 3.26.0.68) | `remarkable-sp-rm1-<version>.tar.gz` | gebaut, Gerätetest offen |
+| reMarkable 2 | – | folgt (eigenes SDK) |
 
-1. **SSH aktivieren:** Gerät per USB verbinden. Das Root-Passwort steht unter
-   *Einstellungen → Hilfe → Copyrights und Lizenzen*. Dann `ssh root@10.11.99.1`.
-2. **Launcher installieren** (einmalig), z. B. über [Toltec](https://toltec-dev.org): *remux*,
-   *Oxide* oder *draft*. Vorher prüfen, ob Toltec deine Firmware-Version unterstützt.
-3. **App kopieren und eintragen**, am Computer im Ordner dieses Repos:
+Die App nutzt das Qt 6 des Systems und das epaper-Backend von reMarkable
+([offizielle Anleitung](https://developer.remarkable.com/documentation/qt_epaper)).
+Alles liegt in **`/home/root/apps/<app>`**; nichts kommt nach `/usr`, `/etc` oder `/opt`, und es
+gibt keinen Autostart.
+
+1. **SSH:** Gerät per USB verbinden. Das Passwort steht unter *Einstellungen → Hilfe → Copyrights und
+   Lizenzen*.
+2. **Installieren** vom Rechner aus, im Ordner dieses Repos:
    ```sh
-   deploy/install.sh remarkable-sp-arm      # kopiert nach /opt/bin + Launcher-Eintrag
+   deploy/install.sh remarkable-sp-rm1-0.3.1.tar.gz        # nach /home/root/apps/remarkable-sp
    ```
-4. Im Launcher **„Aufgaben (SP)“** starten.
+3. **Starten:**
+   ```sh
+   ssh root@10.11.99.1
+   systemctl stop xochitl
+   /home/root/apps/remarkable-sp/start.sh                   # Ende mit Strg+C
+   systemctl start xochitl
+   ```
+4. **Entfernen:** `deploy/uninstall.sh remarkable-sp`. Die Daten bleiben erhalten, mit `--purge`
+   wird alles gelöscht.
 
-Spätere Versionen installierst du direkt in der App unter
-*Einstellungen → Nach Updates suchen*. Die vorherige Version bleibt als `.old` erhalten.
+Der Start über AppLoad ist geplant. Updates gibt es in der App unter *Einstellungen → Nach Updates
+suchen*.
 
 ## Verwendung
 
@@ -113,7 +123,7 @@ Die App ist in C++/Qt 6 und QML geschrieben. Entwickelt wird bequem am Linux-PC,
 Maus den Stift.
 
 ```sh
-sudo apt install qt6-base-dev qt6-declarative-dev qml6-module-qtquick \
+sudo apt install qt6-base-dev qt6-base-private-dev qt6-declarative-dev qml6-module-qtquick \
   qml6-module-qtquick-window qml6-module-qtqml-workerscript zlib1g-dev libssl-dev cmake g++
 
 cmake -S . -B build && cmake --build build -j
@@ -132,19 +142,26 @@ QT_QPA_PLATFORM=offscreen ./build/rmsp_tests   # Tests
 | `qml/` | Oberfläche (`Theme.qml` = Farben, Maße) |
 | `deploy/` | Installation, Launcher-Dateien, Release-Upload |
 
-**Für das Gerät bauen:** mit einer Qt-6-Toolchain für ARM, z. B. mit dem reMarkable-SDK:
-`cmake -S . -B build-rm -DCMAKE_TOOLCHAIN_FILE=<sdk>/toolchain.cmake -DRMSP_BUILD_TESTS=OFF`.
-Eine fertige Build-Pipeline für das Gerät fehlt noch. Hilfe dabei ist sehr willkommen.
+**Für das rM1 bauen** mit dem offiziellen SDK
+([Download-Liste](https://developer.remarkable.com/links), passend zur Firmware):
+```sh
+sh remarkable-production-image-5.6.75-rm1-public-x86_64-toolchain.sh -y -d ~/sdk-rm1
+EPAPER_QPA=~/epaper-qpa device/package-rm1.sh ~/sdk-rm1 dist-rm1   # epaper-qpa optional
+```
+Den Stift liest `src/peninput.cpp` direkt vom Wacom-Eingabegerät, weil das epaper-Plugin nur Touch
+verarbeitet.
 
-**Release:** Version in `CMakeLists.txt` erhöhen und Tag `vX.Y.Z` pushen. Dann den Geräte-Build mit
-`deploy/release-device.sh vX.Y.Z <binary> arm` anhängen.
+**Release:** Version in `CMakeLists.txt` erhöhen und Tag `vX.Y.Z` pushen. `release.yml` baut die
+Desktop-Version und die rM1-Pakete mit dem SDK und hängt beides an das Release.
 
 Mitmachen: siehe [CONTRIBUTING.md](CONTRIBUTING.md). Fehler und Ideen bitte als
 [Issue](https://github.com/motus5/remarkable-sp/issues).
 
 ## Roadmap
 
-- [ ] Geräte-Build in der CI und Test auf rM1/rM2
+- [x] Geräte-Build für rM1 in der CI (offizielles SDK)
+- [ ] Test auf rM1, dann rM2-Build
+- [ ] Start über AppLoad
 - [ ] Aufgaben umsortieren
 - [ ] Wiederkehrende Aufgaben und Notizen aus SP anzeigen
 - [ ] Handschrifterkennung (Tinte → Text)

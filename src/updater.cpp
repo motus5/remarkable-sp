@@ -35,7 +35,11 @@ QString Updater::currentVersion() const
 
 QString Updater::assetName()
 {
+#ifdef RMSP_UPDATE_ASSET
+    return QStringLiteral(RMSP_UPDATE_ASSET); // device builds, e.g. remarkable-sp-rm1
+#else
     return QStringLiteral("remarkable-sp-") + QSysInfo::buildCpuArchitecture();
+#endif
 }
 
 int Updater::compareVersions(const QString &a, const QString &b)
