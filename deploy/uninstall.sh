@@ -20,7 +20,11 @@ ssh "$HOST" "set -e
         rm -rf \"\$DIR\"
         echo \"Entfernt: \$DIR\"
     else
-        find \"\$DIR\" -mindepth 1 -maxdepth 1 ! -name data -exec rm -rf {} +
+        for f in \"\$DIR\"/* \"\$DIR\"/.[!.]*; do
+            [ -e \"\$f\" ] || continue
+            [ \"\${f##*/}\" = data ] && continue
+            rm -rf \"\$f\"
+        done
         echo \"Programm entfernt, Daten behalten: \$DIR/data\"
     fi
     rmdir /home/root/apps 2>/dev/null || true"

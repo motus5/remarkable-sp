@@ -31,19 +31,26 @@ enthält die Testschritte.
 | | |
 |---|---|
 | Modell | reMarkable 1 (SDK-Produktcode `rm1`), CPU armv7l |
-| Firmware | 3.26.0.68 (wird in Schritt 1 geprüft) |
-| Zusätzlich installiert | **xovi** (Erweiterungs-Lader für xochitl), **AppLoad** (App-Starter, läuft über xovi), **literm** (Terminal) |
-| Speicher | Root-Dateisystem `/` **fast voll** (zuletzt 8,7 MB frei); `/home` hat Platz |
-| Verbindung | USB-Kabel, `ssh root@10.11.99.1`; Passwort unter *Einstellungen → Hilfe → Copyrights und Lizenzen* |
+| Firmware / Kernel | 3.26.0.68 / 5.4.70 (wird in B1 geprüft) |
+| Shell-Werkzeuge | **BusyBox**: kürzere Optionen, z. B. `head -n 5` statt `head -5` |
+| Verbindung | **nur USB**: `ssh root@10.11.99.1`, nicht über WLAN. Passwort unter *Einstellungen → Hilfe → Copyrights und Lizenzen* |
+| Speicher | `/` zu **96 % voll (ca. 8 MB frei)**; `/home` hat mehrere GB frei |
+| xovi | wird **nicht** über systemd geladen, sondern über das Skript `/home/root/xovi/start`, das xochitl selbst neu startet. Ausgelöst vom Timer `rm-delayed-hacks.timer` **10 Minuten nach dem Booten** |
+| xovi-Erweiterungen | u. a. **appload**, **literm**, **touch-lock**, enable-typing-on-documents, navigate-using-arrow-keys |
+| Eigener Sync des Besitzers | **rmfakecloud-proxy** auf `127.0.0.1:443` und ein Block `rmfake_start` in `/etc/hosts`. **Erwartet, kein Fehler, nicht anfassen** |
 
 **Wichtige Begriffe:**
 - **xochitl:** die normale reMarkable-Oberfläche, ein systemd-Dienst. Solange sie läuft, gehört
   ihr der Bildschirm. Für den Test wird sie kurz gestoppt.
-- **xovi:** lädt Erweiterungen in xochitl, z. B. AppLoad. Je nach Einrichtung startet xochitl
-  nach einem Stopp/Start **ohne xovi** neu, dann fehlt AppLoad. Darum gibt es die Prüfungen
-  A6 und B1.
+- **xovi:** lädt Erweiterungen in xochitl, z. B. AppLoad. Nach `systemctl stop/start xochitl`
+  läuft xochitl **ohne xovi**, AppLoad und die anderen Erweiterungen fehlen dann. Das ist im
+  Test erwartet. Am Ende stellt `/home/root/xovi/start` den Normalzustand wieder her, aber
+  **nur nach Freigabe des Besitzers** (B10).
+- **Timer `rm-delayed-hacks.timer`:** startet xovi einmalig 10 Minuten nach dem Booten. Läuft das
+  Gerät kürzer, würde der Timer mitten im Test xochitl neu starten. Darum die Uptime-Prüfung
+  in B1.
 - **`/home/root/.local/share/remarkable/xochitl`:** die **Notizbücher und Dokumente des
-  Besitzers.** Dieser Ordner wird nie angefasst, auch nicht lesend durchsucht.
+  Besitzers.** Einzige Ausnahme: das Backup in B0b und dessen Prüfung, beide nur lesend.
 
 ## A3. Was die App auf dem Gerät tut
 
@@ -74,6 +81,8 @@ enthält die Testschritte.
 | R6 | **Vor jedem `systemctl start xochitl` prüfen, dass keine App mehr läuft:** `pidof remarkable-sp hello_remarkable` muss leer sein. |
 | R7 | Am Ende muss das Gerät so dastehen wie vorher: xochitl läuft, mit xovi, wenn es vorher mit xovi lief. Der freie Speicher entspricht dem Anfangswert, oder die App bleibt auf Wunsch des Besitzers installiert. |
 | R8 | Die Datei-Übertragung läuft nur über `deploy/install.sh` und `deploy/uninstall.sh`. Diese Skripte vorher lesen, sie sind kurz. |
+| R9 | Befehle auf dem Gerät in BusyBox-Schreibweise (z. B. `head -n 5`). |
+| R10 | Vor dem ersten Schreibschritt ist das Backup (B0b) fertig und geprüft. |
 
 ## A5. Verbotene Aktionen
 
@@ -82,8 +91,12 @@ anhalten und berichten.
 
 - Schreiben, Löschen oder Ändern in `/usr`, `/lib`, `/etc`, `/opt`, `/var`, `/boot` und allem
   außerhalb von `/home/root/apps`, also auch kein `mount -o remount,rw`.
-- Zugriff auf `/home/root/.local/share/remarkable/` (Dokumente des Besitzers) und auf
-  `/home/root/xovi` (nur lesen erlaubt, siehe A6).
+- Zugriff auf `/home/root/.local/share/remarkable/` (Dokumente des Besitzers). Ausnahme: das
+  Backup in B0b, nur lesend.
+- Änderungen an `/home/root/xovi`. `/home/root/xovi/start` nur in B10 und nur nach Freigabe.
+- rmfakecloud-proxy, den `rmfake_start`-Block in `/etc/hosts` und die prx-Connectoren: nichts
+  daran ändern, nichts neu starten, nicht als Fehler werten.
+- WLAN-Einstellungen; gearbeitet wird nur über USB.
 - `systemctl enable|disable|mask|edit|daemon-reload`, Unit-Dateien anlegen oder ändern, Cronjobs.
 - `reboot`, `poweroff`, `shutdown`, `rm -rf` mit Pfaden außerhalb von `/home/root/apps/…`.
 - Paketmanager (`opkg`, `toltec`, `vellum`), Updates, Downloads auf dem Gerät.
@@ -100,22 +113,18 @@ anhalten und berichten.
 | App reagiert nicht, Strg+C wirkt nicht | zweite SSH-Sitzung: `pidof remarkable-sp hello_remarkable`, dann `kill <pid>`, wenn nötig `kill -9 <pid>` |
 | SSH-Sitzung abgebrochen, während die App lief | neu verbinden, `pidof …`, App beenden, dann `systemctl start xochitl` |
 | xochitl startet nicht (`systemctl is-active xochitl` ≠ `active`) | einmal `systemctl start xochitl`; danach `systemctl status xochitl --no-pager` und `journalctl -u xochitl -n 50 --no-pager` lesen und **anhalten**, berichten |
-| xochitl läuft, aber AppLoad fehlt | xovi wurde nicht wieder geladen. **Nicht selbst reparieren.** Den Besitzer fragen, wie er xovi normalerweise startet; erst nach Freigabe genau diesen Weg ausführen |
+| xochitl läuft, aber AppLoad fehlt | erwartet nach `systemctl start xochitl` (xovi nicht geladen). Wiederherstellen erst in B10 mit `/home/root/xovi/start`, nur nach Freigabe |
+| Touch reagiert nicht (B4/B7) | App beenden. Zuerst ausschließen, dass die xovi-Erweiterung **touch-lock** aktiv ist: Besitzer prüft in den Quick-Settings von xochitl, dafür vorher xochitl (und nach Freigabe xovi) starten. Dann den Schritt wiederholen |
 | Bildschirm bleibt hängen, nichts geht mehr | Besitzer: Ein-/Aus-Taste 10 s halten (Neustart). Die App startet danach nicht von selbst |
 | Gerät per USB nicht mehr erreichbar | Kabel neu stecken, Gerät entsperren. Bleibt es so: anhalten, berichten |
 
-**xovi-Zustand bestimmen (nur lesen, Teil von Schritt B1):**
+**xovi-Zustand bestimmen (nur lesen, Teil von B1, B5, B8, B10):**
 ```sh
 rM# P=$(pidof xochitl); [ -n "$P" ] && tr '\0' '\n' < /proc/$P/environ | grep -i preload || echo "kein LD_PRELOAD"
-rM# systemctl cat xochitl --no-pager | grep -iE 'preload|xovi|^ExecStart'
-rM# ls /etc/systemd/system/xochitl.service.d/ 2>/dev/null; ls /run/systemd/system/xochitl.service.d/ 2>/dev/null
-rM# ls /home/root/xovi 2>/dev/null
 ```
-Ergebnis notieren.
-- **Enthält `LD_PRELOAD` einen xovi-Pfad**, läuft xochitl mit xovi.
-- **Steht die Einstellung in einem `.service.d`-Ordner unter `/etc`**, bleibt sie beim Stopp/Start
-  erhalten. Liegt sie nur unter `/run` oder gar nicht vor, wurde xovi vermutlich von Hand
-  gestartet. Dann vor Schritt B3 **den Besitzer fragen**, wie er xovi nach dem Test wieder startet.
+- Ein `LD_PRELOAD` mit xovi-Pfad bedeutet: xochitl läuft mit xovi.
+- Vor dem Test ist das der Normalzustand. Nach `systemctl start xochitl` ist `kein LD_PRELOAD`
+  erwartet.
 
 ## A7. Vorbereitung am PC
 
@@ -156,9 +165,28 @@ PC$ cat deploy/install.sh deploy/uninstall.sh
 - `hello-remarkable-rm1.tar.gz: OK` und `remarkable-sp-rm1-0.3.1.tar.gz: OK`.
 - Die Skripte schreiben nur nach `/home/root/apps`.
 
+## B0b. Backup der Dokumente (ASUS, Pflicht vor dem ersten Schreibschritt)
+
+- Das vorhandene Backup-Skript des Besitzers auf dem **ASUS** ausführen, nicht über Mac/SMB:
+  `~/Dokumente/bue-iot-rm1-bkp/rm1-backup.sh`.
+- Vorher dem Besitzer zeigen, welche Zeile den **RUN-Pfad** festlegt, und sie mit Freigabe auf
+  das heutige Datum setzen.
+- In `screen` starten, damit ein Verbindungsabbruch das Backup nicht abbricht:
+  ```sh
+  PC$ screen -S rm1-backup ~/Dokumente/bue-iot-rm1-bkp/rm1-backup.sh
+  ```
+- **Prüfung:** Die Zahl der `.metadata`-Dateien auf dem Gerät muss gleich der im Backup sein.
+  ```sh
+  rM# find /home/root/.local/share/remarkable/xochitl -name '*.metadata' | wc -l
+  PC$ find <RUN-Pfad> -name '*.metadata' | wc -l
+  ```
+  **Erwartet:** beide Zahlen gleich. Sonst **anhalten**.
+
 ## B1. Vorab-Prüfungen (nur lesen)
 
 ```sh
+rM# uptime
+rM# systemctl list-timers --all --no-pager | grep -i delayed
 rM# cat /etc/os-release; uname -a; df -h / /home
 rM# grep -i version /usr/share/remarkable/update.conf 2>/dev/null
 rM# cat /sys/class/power_supply/*/capacity 2>/dev/null
@@ -169,20 +197,23 @@ rM# grep -E '^N: Name|^H: Handlers' /proc/bus/input/devices
 rM# systemctl is-active xochitl
 rM# ls -la /home/root/apps 2>/dev/null || echo "kein apps-Ordner"
 ```
-Dazu die **xovi-Prüfung aus A6** ausführen.
+Dazu die **xovi-Prüfung aus A6** ausführen. **Zuerst die Uptime prüfen:** Läuft das Gerät
+weniger als 10 Minuten, warten, bis der Timer `rm-delayed-hacks` gelaufen ist (xovi aktiv),
+dann B1 neu beginnen.
 
 | Prüfung | Erwartet | Wenn nicht |
 |---|---|---|
+| `uptime` | mindestens 10 Minuten | warten, dann neu |
 | `os-release` | `IMG_VERSION="5.6.75"` (SDK-Stand zu 3.26.0.68); andere Werte notieren | weiter, Version berichten |
-| `uname -a` | `armv7l` | **anhalten** |
-| `df -h /home` | mindestens **10 MB** frei | **anhalten** |
+| `uname -a` | Kernel `5.4.70`, `armv7l` | anderer Kernel: notieren; kein armv7l: **anhalten** |
+| `df -h / /home` | `/` ca. 96 % (Wert notieren, darf sich im Test nicht ändern); `/home` mindestens **10 MB** frei | `/home` zu voll: **anhalten** |
 | Akku | mindestens 30 % | Besitzer laden lassen |
 | Qt-6-Bibliotheken | alle 7 Dateien vorhanden | **anhalten**, fehlende nennen |
 | `plugins/scenegraph` | enthält `libqsgepaper.so` | **anhalten** |
 | `plugins/platforms` | enthält `libepaper.so`; fehlt sie, nutzen die Apps automatisch die mitgelieferte | weiter, notieren |
 | Eingabegeräte | Wacom-Digitizer (Stift), Touchscreen, Tasten; Namen und `eventN` notieren | weiter, Liste berichten |
 | xochitl | `active` | **anhalten** |
-| xovi | Zustand laut A6 notiert, Wiederherstellungsweg geklärt | vor B3 klären |
+| xovi | `LD_PRELOAD` mit xovi-Pfad (Normalzustand) | notieren |
 
 ## B2. Hello-World installieren (PC)
 
@@ -228,8 +259,8 @@ rM# systemctl start xochitl; sleep 5; systemctl is-active xochitl
 ```
 **Erwartet:**
 - `keine App aktiv`, danach `active`, und die normale Oberfläche erscheint.
-- Dann die **xovi-Prüfung aus A6** wiederholen. Das Ergebnis muss dem aus B1 entsprechen.
-- Fehlt xovi/AppLoad jetzt: anhalten und nach A6 vorgehen.
+- Dann die **xovi-Prüfung aus A6**: `kein LD_PRELOAD` ist hier **erwartet**. AppLoad fehlt bis B10,
+  das ist kein Fehler.
 
 ## B6. App installieren (PC)
 
@@ -273,6 +304,9 @@ Mit dem Besitzer prüfen und je Punkt ja/nein berichten:
    `invx,invy` · `none`
 4. Den passenden Wert berichten.
 
+**Touch reagiert gar nicht:** zuerst touch-lock ausschließen (siehe A6), erst dann die Varianten
+unten.
+
 **Erlaubte Varianten, wenn (a) nicht stimmt** (Tipp landet woanders): vor den Start
 `QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS="rotate=0"` setzen, dann `rotate=90`, dann `rotate=270`, und
 berichten, welcher Wert stimmt.
@@ -302,12 +336,22 @@ rM# ls -la /home/root/apps 2>/dev/null || echo "apps-Ordner entfernt"; df -h / /
 - „Entfernt: …“ bzw. „Programm entfernt, Daten behalten“.
 - `df` für `/` ist unverändert gegenüber B1. `/home` entspricht B1, wenn alles entfernt wurde.
 
-## B10. Abschluss
+## B10. Abschluss und xovi wiederherstellen
 
+Erst prüfen:
 ```sh
 rM# systemctl is-active xochitl; pidof remarkable-sp hello_remarkable || echo "keine App aktiv"
 ```
-Plus die xovi-Prüfung. **Erwartet:** `active`, `keine App aktiv`, xovi-Zustand wie in B1.
+**Erwartet:** `active`, `keine App aktiv`.
+
+Dann **nur nach Freigabe des Besitzers** xovi wieder laden. Das Skript startet xochitl selbst neu:
+```sh
+rM# /home/root/xovi/start
+```
+**Erwartet:**
+- Nach kurzer Zeit erscheint wieder die normale Oberfläche mit AppLoad (Besitzer fragen).
+- Die xovi-Prüfung aus A6 zeigt wieder `LD_PRELOAD` wie in B1.
+- `df -h /` entspricht dem Wert aus B1.
 
 ---
 
@@ -325,4 +369,5 @@ prüfen. Inhalt:
    - die Terminal-Ausgaben aus B4 und B7,
    - falls nötig der passende `RMSP_PEN_TRANSFORM`- und Touch-Wert,
    - der Eindruck zur Geschwindigkeit (B7 h).
-4. **Endzustand:** xochitl aktiv, xovi wie vorher, App installiert oder entfernt, freier Speicher.
+4. **Endzustand:** Backup geprüft (Zahl der `.metadata`), xochitl aktiv, xovi wieder geladen,
+   App installiert oder entfernt, freier Speicher auf `/` und `/home`.
