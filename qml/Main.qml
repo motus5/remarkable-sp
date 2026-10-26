@@ -3,11 +3,15 @@ import RemarkableSP.Core
 
 Window {
     id: win
-    // reMarkable 2 is 1404x1872; on desktop we open at half size.
-    width: 702
-    height: 936
+    // On the tablet the window must be sized to the screen explicitly: the
+    // epaper platform ignores Window.FullScreen and would keep 702x936
+    // (device test v0.3.1). On desktop we open at half rM size (1404x1872).
+    width: rmFullscreen ? Screen.width : 702
+    height: rmFullscreen ? Screen.height : 936
     visible: true
-    visibility: rmFullscreen ? Window.FullScreen : Window.Windowed
+    // rmIgnoresFullScreen: the platform does not apply Window.FullScreen
+    // (epaper on the device, or RMSP_SIMULATE_EPAPER=1 in the CI test).
+    visibility: rmFullscreen && !rmIgnoresFullScreen ? Window.FullScreen : Window.Windowed
     title: "reMarkable SP"
     color: Theme.paper
 

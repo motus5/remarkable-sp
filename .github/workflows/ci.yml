@@ -18,4 +18,4 @@ jobs:
       - name: Build
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
       - name: Test
-        run: QT_QPA_PLATFORM=offscreen ./build/rmsp_tests
+        run: ctest --test-dir build --output-on-failure

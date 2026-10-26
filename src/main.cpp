@@ -12,7 +12,9 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QScreen>
 #include <QQuickWindow>
+#include <QTimer>
 #include <QStandardPaths>
 
 #include <memory>
@@ -74,11 +76,29 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("sync"), &sync);
     engine.rootContext()->setContextProperty(QStringLiteral("updater"), &updater);
     engine.rootContext()->setContextProperty(QStringLiteral("rmFullscreen"), fullscreen);
+    engine.rootContext()->setContextProperty(QStringLiteral("rmIgnoresFullScreen"),
+                                             epaper || qEnvironmentVariableIsSet("RMSP_SIMULATE_EPAPER"));
     // On-screen keyboard: on the tablet, or on request for testing.
     engine.rootContext()->setContextProperty(QStringLiteral("rmOsk"), fullscreen || qEnvironmentVariableIsSet("RMSP_OSK"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.load(QUrl(QStringLiteral("qrc:/RemarkableSP/Main.qml")));
+
+    // Self-check for CI and emulation: render once, save the window as PNG,
+    // report window and screen size, quit.
+    const QString screenshot = qEnvironmentVariable("RMSP_SCREENSHOT");
+    if (!screenshot.isEmpty() && !engine.rootObjects().isEmpty()) {
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+        QTimer::singleShot(1500, &app, [window, screenshot] {
+            const QImage image = window->grabWindow();
+            const QSize screen = window->screen() ? window->screen()->size() : QSize();
+            const bool saved = image.save(screenshot);
+            printf("RMSP_GEOMETRY window=%dx%d screen=%dx%d image=%dx%d saved=%d\n", window->width(),
+                   window->height(), screen.width(), screen.height(), image.width(), image.height(), saved ? 1 : 0);
+            fflush(stdout);
+            QCoreApplication::exit(saved ? 0 : 2);
+        });
+    }
 
     return app.exec();
 }
