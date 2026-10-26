@@ -140,6 +140,12 @@ public:
     Q_INVOKABLE void removeTask(const QString &id);
     Q_INVOKABLE void inkSaved(const QString &id, bool titleInkEmpty);
 
+    // Title rule (device test v0.3.1, #5): seen title = stored/synced title.
+    // A typed title wins and hides the handwritten one; without typed text
+    // the handwriting is the title and SP gets kHandwritingTitle.
+    Q_INVOKABLE static bool titleIsTyped(const QString &typed) { return !typed.trimmed().isEmpty(); }
+    Q_INVOKABLE static QString storedTitle(const QString &typed, bool titleInkEmpty);
+
     Q_INVOKABLE void toggleTracking(const QString &id);
     Q_INVOKABLE void stopTracking();
     Q_INVOKABLE void commitTracking(qint64 nowMs = -1);

@@ -487,6 +487,13 @@ void Workspace::removeTask(const QString &id)
     }
 }
 
+QString Workspace::storedTitle(const QString &typed, bool titleInkEmpty)
+{
+    if (titleIsTyped(typed))
+        return typed.trimmed();
+    return titleInkEmpty ? QString() : kHandwritingTitle;
+}
+
 void Workspace::inkSaved(const QString &id, bool titleInkEmpty)
 {
     m_list.bumpInk(id);

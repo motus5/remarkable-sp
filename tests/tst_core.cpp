@@ -178,6 +178,20 @@ private slots:
         QVERIFY(qAbs(w.lastPressure - 0.8) < 0.01);
     }
 
+    // T2: the title shown is the title stored and synced (#5).
+    void titleModesExclusive()
+    {
+        // typed title wins, also when handwriting exists
+        QVERIFY(Workspace::titleIsTyped("Angebot"));
+        QCOMPARE(Workspace::storedTitle("Angebot", false), QString("Angebot"));
+        QCOMPARE(Workspace::storedTitle("  Angebot ", true), QString("Angebot"));
+        // no typed text: the handwriting is the title, SP gets the marker
+        QVERIFY(!Workspace::titleIsTyped("   "));
+        QCOMPARE(Workspace::storedTitle("", false), Workspace::kHandwritingTitle);
+        // neither: empty title
+        QCOMPARE(Workspace::storedTitle("", true), QString());
+    }
+
     // T4: with monochrome ink the canvas holds only fully transparent or
     // fully black pixels (no antialiasing greys).
     void inkIsMonochrome()

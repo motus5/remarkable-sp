@@ -13,6 +13,8 @@ Rectangle {
     property bool eraserMode: false
     property var lastCanvas: notesInk.canvas
     property bool editingTitle: false
+    // A typed title wins over handwriting (see Workspace::storedTitle).
+    readonly property bool typedTitle: app.titleIsTyped(titleField.text)
     signal closed()
     signal openMenu(var items, var anchor, string title)
 
@@ -24,11 +26,11 @@ Rectangle {
             root.closed() // deleted, e.g. remotely
     }
     function persist() {
-        const titleEmpty = titleInk.canvas.empty
+        const inkEmpty = titleInk.canvas.empty
         titleInk.canvas.save()
         notesInk.canvas.save()
-        app.setTitle(taskId, titleField.text)
-        app.inkSaved(taskId, titleEmpty)
+        app.setTitle(taskId, app.storedTitle(titleField.text, inkEmpty))
+        app.inkSaved(taskId, typedTitle || inkEmpty)
     }
     function close() {
         persist()
@@ -191,20 +193,25 @@ Rectangle {
                 verticalAlignment: Text.AlignVCenter
             }
 
-            // Handwritten title on a heading rule.
-            InkField {
-                id: titleInk
+            // Title on a heading rule: handwritten, or typed (typed wins).
+            Item {
                 width: parent.width - 8 * root.u
                 height: 12 * root.u
-                u: root.u
-                eraserMode: root.eraserMode
-                source: root.task.inkTitlePath || ""
-                placeholder: titleField.text === "" ? "Titel schreiben …" : ""
-                onStroked: root.lastCanvas = titleInk.canvas
-                Text { // typed title shows through when there is no ink
+                InkField {
+                    id: titleInk
+                    anchors.fill: parent
+                    visible: !root.typedTitle
+                    editable: !root.typedTitle
+                    u: root.u
+                    eraserMode: root.eraserMode
+                    source: root.task.inkTitlePath || ""
+                    placeholder: "Titel schreiben …"
+                    onStroked: root.lastCanvas = titleInk.canvas
+                }
+                Text {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: titleInk.canvas.empty && titleField.text !== "" && !titleField.input.activeFocus
+                    visible: root.typedTitle && !titleField.input.activeFocus
                     text: titleField.text
                     font.pixelSize: 5 * root.u
                     font.weight: Font.DemiBold
@@ -229,13 +236,24 @@ Rectangle {
 
             Field {
                 id: titleField
-                visible: root.editingTitle || (titleInk.canvas.empty && text === "")
+                visible: root.editingTitle || (titleInk.canvas.empty && !root.typedTitle)
                 width: parent.width
                 u: root.u
                 fontSize: 2.6 * root.u
                 text: root.task.title === "✍ Handschrift (reMarkable)" ? "" : (root.task.title || "")
                 placeholder: "Titel tippen (wird mit Super Productivity synchronisiert)"
-                onEdited: (t) => { app.setTitle(root.taskId, t); root.editingTitle = false }
+                onEdited: (t) => {
+                    app.setTitle(root.taskId, app.storedTitle(t, titleInk.canvas.empty))
+                    root.editingTitle = false
+                }
+            }
+            Text {
+                width: parent.width
+                visible: root.typedTitle && !titleInk.canvas.empty
+                text: "Handschrift-Titel ausgeblendet – getippten Titel löschen, um wieder von Hand zu schreiben."
+                wrapMode: Text.Wrap
+                font.pixelSize: 2.3 * root.u
+                color: Theme.muted
             }
 
             Flow {
