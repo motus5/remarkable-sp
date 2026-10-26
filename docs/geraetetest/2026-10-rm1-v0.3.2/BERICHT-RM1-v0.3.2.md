@@ -6,7 +6,7 @@
 | Gerät | reMarkable 1, `IMG_VERSION="3.26.0.68"`, `VERSION_ID=5.6.75`, Kernel 5.4.70 armv7l, Qt 6.8.2 |
 | Release | v0.3.2 (Tag `9178808`), Prüfsummen OK, `check-archive.sh` (T6) ok für beide Archive |
 | Verbindung | WLAN, Test-Instanz am PC des Besitzers, Besitzer am Gerät (R12 eingehalten) |
-| Abweichung | Hello-World (B2-Installation, B3–B5) bewusst ausgelassen – lief in v0.3.1 einwandfrei, nur Archiv-Besitzer geändert. B8b/B9/B10 stehen noch aus (Gerät war anderweitig belegt) |
+| Abweichung | Hello-World (B2-Installation, B3–B5) bewusst ausgelassen – lief in v0.3.1 einwandfrei, nur Archiv-Besitzer geändert. B9 (Rückbau) nicht ausgeführt, App bleibt installiert |
 
 Kein Passwort, keine Adressen in diesem Bericht.
 
@@ -43,7 +43,9 @@ Kein Passwort, keine Adressen in diesem Bericht.
 | h | Linie, schnelle Spirale, Wort: „alles geht, aber Verzögerung ca. 3 mm hinter der bewegten Stiftspitze. Aussetzer während der Spirale mit Strichen. Die werden dann vom Display nachgezeichnet … wenn man das Tablet normal verwendet, nicht so.“ | teilweise |
 | B7 Ende | Strg+C beendet, `pidof` leer. `data/`: `sp-state.json`, `sp-client.json`, `ink/` – **`settings.ini` fehlt**; **keine `LATENZ-SUMME`-Zeile** | teilweise |
 | B8 | `keine App aktiv`, `active`, `LD_PRELOAD=/home/root/xovi/xovi.so` | ja |
-| B8b, B9, B10 | ausstehend; App bleibt vorerst installiert (Wunsch Besitzer) | – |
+| B8b | Liste 1 (`/`): nur `system.journal`, `/etc/passwd`, `/etc/shadow` und `-`-Kopien (xochitl beim Start, bekannt). Liste 2: nur xochitl-Cache und `xochitl.conf`; memfault 2 Dateien. Nichts von der App. `/` 6 062 KB frei = unverändert seit B1, Journal 6 111 KB unverändert | ja |
+| B9 | nicht ausgeführt – App bleibt für weitere Tests installiert (Wunsch Besitzer), startet nie von selbst | – |
+| B10 | xochitl `active`, keine App aktiv, `LD_PRELOAD=/home/root/xovi/xovi.so` | ja |
 
 ## 3. Latenzmessung (`RMSP_LATENCY_LOG=1`, 46 Striche)
 
