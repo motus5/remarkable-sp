@@ -47,8 +47,32 @@ pack remarkable-sp "$BUILD/app/remarkable-sp" "$ROOT/device/rm1/start-remarkable
 cp "$ROOT/third_party/fonts/OFL.txt" "$BUILD/stage/remarkable-sp/licenses/NotoSans-OFL.txt"
 cp "$ROOT/third_party/argon2/LICENSE" "$BUILD/stage/remarkable-sp/licenses/argon2.txt"
 
-tar -C "$BUILD/stage" -czf "$OUT/hello-remarkable-rm1.tar.gz" hello-remarkable
-tar -C "$BUILD/stage" -czf "$OUT/remarkable-sp-rm1-$VERSION.tar.gz" remarkable-sp
+# Owner root on the device (tar as root restores owners; v0.3.1 had uid 1001).
+TAROPTS="--owner=0 --group=0 --numeric-owner"
+# shellcheck disable=SC2086
+tar $TAROPTS -C "$BUILD/stage" -czf "$OUT/hello-remarkable-rm1.tar.gz" hello-remarkable
+# shellcheck disable=SC2086
+tar $TAROPTS -C "$BUILD/stage" -czf "$OUT/remarkable-sp-rm1-$VERSION.tar.gz" remarkable-sp
+"$ROOT/device/check-archive.sh" "$OUT/hello-remarkable-rm1.tar.gz" hello-remarkable 1024
+"$ROOT/device/check-archive.sh" "$OUT/remarkable-sp-rm1-$VERSION.tar.gz" remarkable-sp 4096
+# Reference image for the device test: the ARM build rendered under qemu at
+# the rM1 screen size (needs qemu-arm; skipped otherwise).
+if command -v qemu-arm >/dev/null 2>&1; then
+    SYSROOT=$(ls -d "$SDK"/sysroots/cortexa9hf-neon-*)
+    SHOT="$OUT/soll-bild-rm1-$VERSION.png"
+    LINE=$(LC_ALL=C.UTF-8 QML_IMPORT_PATH="$SYSROOT/usr/lib/qml" QT_PLUGIN_PATH="$SYSROOT/usr/lib/plugins" \
+           QT_QPA_PLATFORM="offscreen:configfile=$ROOT/tests/rm1-screen.json" \
+           RMSP_FULLSCREEN=1 RMSP_SIMULATE_EPAPER=1 RMSP_DATA_DIR="$BUILD/shotdata" RMSP_SCREENSHOT="$SHOT" \
+           timeout 300 qemu-arm -L "$SYSROOT" "$BUILD/stage/remarkable-sp/remarkable-sp" 2>/dev/null | grep RMSP_GEOMETRY || true)
+    echo "Soll-Bild: $LINE"
+    case "$LINE" in
+        *"window=1404x1872"*"saved=1"*) ;;
+        *) echo "Soll-Bild unter Emulation fehlgeschlagen" >&2; exit 1 ;;
+    esac
+else
+    echo "qemu-arm fehlt – kein Soll-Bild"
+fi
+
 # Plain binary for the in-app updater (src/updater.cpp looks for this name).
 cp "$BUILD/stage/remarkable-sp/remarkable-sp" "$OUT/remarkable-sp-rm1"
 (cd "$OUT" && sha256sum remarkable-sp-rm1 > remarkable-sp-rm1.sha256 \

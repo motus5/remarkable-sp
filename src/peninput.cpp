@@ -139,7 +139,8 @@ void PenInput::readEvents()
         if (n <= 0)
             break;
         for (size_t i = 0; i < size_t(n) / sizeof(input_event); ++i)
-            feed(ev[i].type, ev[i].code, ev[i].value, qint64(ev[i].time.tv_sec) * 1000000 + ev[i].time.tv_usec);
+            // input_event_sec/usec: works with 32 and 64 bit time_t (rM1 SDK uses 64 bit).
+            feed(ev[i].type, ev[i].code, ev[i].value, qint64(ev[i].input_event_sec) * 1000000 + ev[i].input_event_usec);
     }
 #endif
 }

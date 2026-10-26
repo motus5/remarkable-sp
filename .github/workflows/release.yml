@@ -71,6 +71,8 @@ jobs:
           test "$(openssl md5 -binary sdk.sh | base64)" = "$SDK_MD5_B64"
       - name: Install SDK
         run: sh ~/sdk-installer/sdk.sh -y -d ~/sdk-rm1 > /dev/null
+      - name: Install qemu (reference image of the ARM build)
+        run: sudo apt-get update && sudo apt-get install -y qemu-user
       - name: Fetch epaper-qpa
         run: |
           git clone -q https://github.com/reMarkable/epaper-qpa ~/epaper-qpa
