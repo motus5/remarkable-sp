@@ -1,5 +1,9 @@
 #include "inkcanvas.h"
 
+#include "latency.h"
+
+#include <QElapsedTimer>
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -58,6 +62,9 @@ void InkCanvas::setModified(bool m)
 
 void InkCanvas::beginStroke(qreal x, qreal y, qreal pressure)
 {
+    LatencyProbe *probe = LatencyProbe::instance();
+    if (probe)
+        probe->arrived();
     pushUndo();
     Stroke s;
     s.width = float(m_penWidth / (width() > 0 ? width() : 1));
@@ -67,9 +74,14 @@ void InkCanvas::beginStroke(qreal x, qreal y, qreal pressure)
     m_drawing = true;
 
     if (!m_buffer.isNull()) {
+        QElapsedTimer t;
+        t.start();
         QPainter painter(&m_buffer);
         painter.setRenderHint(QPainter::Antialiasing);
         ink::paintStroke(painter, m_strokes.last(), width());
+        painter.end();
+        if (probe)
+            probe->paintCost(t.nsecsElapsed());
     }
     update(QRect(int(x - 10), int(y - 10), 20, 20));
     emit strokesChanged();
@@ -79,18 +91,26 @@ void InkCanvas::extendStroke(qreal x, qreal y, qreal pressure)
 {
     if (!m_drawing || m_strokes.isEmpty())
         return;
+    LatencyProbe *probe = LatencyProbe::instance();
+    if (probe)
+        probe->arrived();
     Stroke &s = m_strokes.last();
     const QPointF p = norm(x, y);
-    const InkPoint &last = s.points.last();
+    const InkPoint last = s.points.last(); // copy: append() below may reallocate
     // Drop samples closer than ~0.5px, the digitizer reports far more than we need.
     if (qAbs(last.x - p.x()) * width() < 0.5 && qAbs(last.y - p.y()) * width() < 0.5)
         return;
     s.points.append({float(p.x()), float(p.y()), float(pressure)});
 
     if (!m_buffer.isNull()) {
+        QElapsedTimer t;
+        t.start();
         QPainter painter(&m_buffer);
         painter.setRenderHint(QPainter::Antialiasing);
         ink::paintStroke(painter, s, width(), s.points.size() - 1);
+        painter.end();
+        if (probe)
+            probe->paintCost(t.nsecsElapsed());
     }
     const qreal lx = last.x * width(), ly = last.y * width();
     const int pad = int(m_penWidth * 2 + 4);
@@ -106,6 +126,8 @@ void InkCanvas::endStroke()
     m_drawing = false;
     setModified(true);
     emit strokesChanged();
+    if (LatencyProbe *probe = LatencyProbe::instance())
+        probe->strokeEnded();
 }
 
 void InkCanvas::eraseAt(qreal x, qreal y, qreal radius)

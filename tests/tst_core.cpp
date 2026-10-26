@@ -178,6 +178,22 @@ private slots:
         QVERIFY(qAbs(w.lastPressure - 0.8) < 0.01);
     }
 
+    // T5: cost of painting one pen sample on a page-sized canvas (regression
+    // watch; run with -tickcounter or compare the reported msecs per iteration).
+    void inkPaintCost()
+    {
+        InkCanvas c;
+        c.setSize(QSizeF(1300, 1500));
+        c.beginStroke(100, 100, 0.6);
+        qreal x = 100;
+        QBENCHMARK {
+            x = x > 1200 ? 100 : x + 3;
+            c.extendStroke(x, 100 + (int(x) % 50), 0.7);
+        }
+        c.endStroke();
+        QVERIFY(!c.isEmpty());
+    }
+
     void versionCompare()
     {
         QVERIFY(Updater::compareVersions("v0.2.0", "0.1.9") > 0);

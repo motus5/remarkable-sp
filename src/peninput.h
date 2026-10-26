@@ -29,10 +29,21 @@ public:
     // Raw evdev event handling, public for tests.
     void setRanges(int maxX, int maxY, int maxPressure);
     void setTransform(const QString &spec);
-    void feed(int type, int code, int value);
+    // timeUs: kernel time stamp of the event (CLOCK_MONOTONIC, µs), -1 = now
+    void feed(int type, int code, int value, qint64 timeUs = -1);
     QPointF mapToScreen(int rawX, int rawY, const QSizeF &screen) const;
+    // Inverse of mapToScreen for normalised screen coordinates (0..1).
+    QPoint rawFromNormalized(qreal sx, qreal sy) const;
+
+    // Synthetic pen input for measurements without a device:
+    // "spiral" = one fast spiral plus one straight stroke at 200 Hz.
+    void startReplay(const QString &pattern);
+
 
     static QString defaultTransform() { return QStringLiteral("swapxy,invy"); }
+
+signals:
+    void replayFinished();
 
 private:
     void readEvents();
@@ -47,6 +58,7 @@ private:
     int m_maxX = 20967, m_maxY = 15725, m_maxPressure = 4095; // rM1/rM2 Wacom defaults
     bool m_swap = true, m_invX = false, m_invY = true;
 
+    qint64 m_syncTimeUs = -1;
     int m_x = 0, m_y = 0, m_pressure = 0;
     bool m_touching = false, m_wasTouching = false;
     bool m_rubber = false;

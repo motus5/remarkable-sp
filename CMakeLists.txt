@@ -23,6 +23,7 @@ set(CORE_SOURCES
     src/updater.h src/updater.cpp
     src/icon.h src/icon.cpp
     src/peninput.h src/peninput.cpp
+    src/latency.h src/latency.cpp
 )
 
 add_library(rmsp_core STATIC ${CORE_SOURCES})
@@ -112,6 +113,11 @@ if(RMSP_BUILD_TESTS)
                  COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/window_fills_screen.sh
                          $<TARGET_FILE:remarkable-sp> ${CMAKE_CURRENT_SOURCE_DIR}/tests/rm1-screen.json
                          ${CMAKE_CURRENT_BINARY_DIR}/t1)
-        set_tests_properties(rmsp_tests window_fills_screen PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+        add_test(NAME pen_point_density
+                 COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/pen_point_density.sh
+                         $<TARGET_FILE:remarkable-sp> ${CMAKE_CURRENT_SOURCE_DIR}/tests/rm1-screen.json
+                         ${CMAKE_CURRENT_BINARY_DIR}/t3)
+        set_tests_properties(rmsp_tests window_fills_screen pen_point_density
+                             PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
     endif()
 endif()

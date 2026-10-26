@@ -1,5 +1,6 @@
 #include "icon.h"
 #include "inkcanvas.h"
+#include "latency.h"
 #include "peninput.h"
 #include "spstore.h"
 #include "syncengine.h"
@@ -66,9 +67,11 @@ int main(int argc, char *argv[])
 
     // The epaper platform plugin handles touch only; read the pen ourselves.
     std::unique_ptr<PenInput> pen;
-    if (epaper || qEnvironmentVariableIsSet("RMSP_PEN_DEVICE")) {
+    const QString replay = qEnvironmentVariable("RMSP_PEN_REPLAY");
+    if (epaper || qEnvironmentVariableIsSet("RMSP_PEN_DEVICE") || !replay.isEmpty()) {
         pen = std::make_unique<PenInput>();
-        pen->open(qEnvironmentVariable("RMSP_PEN_DEVICE"));
+        if (replay.isEmpty())
+            pen->open(qEnvironmentVariable("RMSP_PEN_DEVICE"));
     }
 
     QQmlApplicationEngine engine;
@@ -83,6 +86,23 @@ int main(int argc, char *argv[])
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.load(QUrl(QStringLiteral("qrc:/RemarkableSP/Main.qml")));
+
+    QQuickWindow *rootWindow = engine.rootObjects().isEmpty()
+        ? nullptr
+        : qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+    if (LatencyProbe *probe = LatencyProbe::instance(); probe && rootWindow)
+        probe->attach(rootWindow);
+
+    // Measurement without a device: open a fresh task page and play a
+    // synthetic pen stroke (see PenInput::startReplay), then quit.
+    if (rootWindow && qEnvironmentVariable("RMSP_OPEN_TASK") == QLatin1String("new"))
+        rootWindow->setProperty("openTaskId", workspace.addTask(QString()));
+    if (pen && !replay.isEmpty()) {
+        QTimer::singleShot(2500, pen.get(), [&pen, replay] { pen->startReplay(replay); });
+        QObject::connect(pen.get(), &PenInput::replayFinished, &app, [] {
+            QTimer::singleShot(1000, [] { QCoreApplication::quit(); });
+        });
+    }
 
     // Self-check for CI and emulation: render once, save the window as PNG,
     // report window and screen size, quit.

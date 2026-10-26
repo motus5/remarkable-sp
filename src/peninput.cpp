@@ -1,11 +1,15 @@
 #include "peninput.h"
 
+#include "latency.h"
+
 #include <QDir>
 #include <QGuiApplication>
 #include <QPointingDevice>
 #include <QScreen>
 #include <QSocketNotifier>
+#include <QTimer>
 #include <QWindow>
+#include <QtMath>
 #include <qpa/qwindowsysteminterface.h>
 
 #ifdef Q_OS_LINUX
@@ -107,6 +111,10 @@ bool PenInput::open(const QString &path)
             continue;
         }
         setRanges(ax.maximum, ay.maximum, ap.maximum);
+        // Time stamps on the monotonic clock for the latency probe. This only
+        // affects our own file descriptor, not other readers of the device.
+        int clockId = CLOCK_MONOTONIC;
+        ioctl(fd, EVIOCSCLOCKID, &clockId);
         m_fd = fd;
         m_path = c;
         m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
@@ -131,13 +139,15 @@ void PenInput::readEvents()
         if (n <= 0)
             break;
         for (size_t i = 0; i < size_t(n) / sizeof(input_event); ++i)
-            feed(ev[i].type, ev[i].code, ev[i].value);
+            feed(ev[i].type, ev[i].code, ev[i].value, qint64(ev[i].time.tv_sec) * 1000000 + ev[i].time.tv_usec);
     }
 #endif
 }
 
-void PenInput::feed(int type, int code, int value)
+void PenInput::feed(int type, int code, int value, qint64 timeUs)
 {
+    if (type == EV_SYN && code == SYN_REPORT)
+        m_syncTimeUs = timeUs < 0 ? LatencyProbe::nowUs() : timeUs;
     if (type == EV_ABS) {
         if (code == ABS_X)
             m_x = value;
@@ -165,6 +175,10 @@ void PenInput::flush()
         window = QGuiApplication::topLevelWindows().constFirst();
     if (!window)
         return;
+    if (m_touching) {
+        if (LatencyProbe *probe = LatencyProbe::instance())
+            probe->rawSample(m_syncTimeUs, LatencyProbe::nowUs());
+    }
     const QPointingDevice *device = m_rubber ? m_eraser : m_pen;
     const QSizeF size = window->screen() ? QSizeF(window->screen()->geometry().size()) : QSizeF(window->size());
     const QPointF global = mapToScreen(m_x, m_y, size);
@@ -181,4 +195,69 @@ void PenInput::flush()
         QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, device, false);
     m_wasTouching = m_touching;
     m_wasInProximity = m_inProximity;
+}
+
+QPoint PenInput::rawFromNormalized(qreal sx, qreal sy) const
+{
+    qreal x = sx, y = sy;
+    if (m_invY)
+        y = 1 - y;
+    if (m_invX)
+        x = 1 - x;
+    if (m_swap)
+        std::swap(x, y);
+    return QPoint(qRound(x * m_maxX), qRound(y * m_maxY));
+}
+
+void PenInput::startReplay(const QString &pattern)
+{
+    // Screen positions (normalised) of the samples, 5 ms apart like the
+    // digitizer's ~200 Hz. A fast spiral in the notes area, then a quick line.
+    struct Sample {
+        qreal x, y;
+        bool down;
+    };
+    auto samples = std::make_shared<QVector<Sample>>();
+    if (pattern == QLatin1String("spiral")) {
+        const qreal aspect = 1404.0 / 1872.0;
+        for (int i = 0; i < 400; ++i) {
+            const qreal a = i * 0.08;
+            const qreal r = 0.02 + 0.18 * i / 400.0;
+            samples->append({0.55 + r * qCos(a), 0.62 + r * qSin(a) * aspect, true});
+        }
+        samples->append({0, 0, false});
+        for (int i = 0; i <= 60; ++i)
+            samples->append({0.25 + 0.5 * i / 60.0, 0.85, true});
+        samples->append({0, 0, false});
+    }
+    auto index = std::make_shared<int>(0);
+    auto *timer = new QTimer(this);
+    timer->setInterval(5);
+    connect(timer, &QTimer::timeout, this, [this, timer, samples, index] {
+        if (*index >= samples->size()) {
+            timer->stop();
+            timer->deleteLater();
+            emit replayFinished();
+            return;
+        }
+        const Sample s = samples->at((*index)++);
+        if (!s.down) {
+            feed(EV_KEY, BTN_TOUCH, 0);
+            feed(EV_ABS, ABS_PRESSURE, 0);
+            feed(EV_SYN, SYN_REPORT, 0);
+            feed(EV_KEY, BTN_TOOL_PEN, 0);
+            feed(EV_SYN, SYN_REPORT, 0);
+            return;
+        }
+        const QPoint raw = rawFromNormalized(s.x, s.y);
+        if (!m_inProximity)
+            feed(EV_KEY, BTN_TOOL_PEN, 1);
+        feed(EV_ABS, ABS_X, raw.x());
+        feed(EV_ABS, ABS_Y, raw.y());
+        feed(EV_ABS, ABS_PRESSURE, m_maxPressure * 2 / 3);
+        if (!m_touching)
+            feed(EV_KEY, BTN_TOUCH, 1);
+        feed(EV_SYN, SYN_REPORT, 0);
+    });
+    timer->start();
 }
