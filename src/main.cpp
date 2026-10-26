@@ -56,6 +56,10 @@ int main(int argc, char *argv[])
         || platform == QLatin1String("offscreen");
     const bool fullscreen = qEnvironmentVariableIsSet("RMSP_FULLSCREEN") || !desktop;
     const bool epaper = platform == QLatin1String("epaper");
+    // Device test v0.3.1: ~400 ms ink latency; grey antialiasing pixels force
+    // slower grey-level e-ink refreshes. Keep ink black/white on the device.
+    if ((epaper && !qEnvironmentVariableIsSet("RMSP_INK_ANTIALIAS")) || qEnvironmentVariableIsSet("RMSP_INK_MONOCHROME"))
+        InkCanvas::setMonochrome(true);
     if (epaper) {
         // reMarkable's own scene graph backend (libqsgepaper) drives the e-ink refresh.
         if (qEnvironmentVariableIsEmpty("QT_QUICK_BACKEND"))

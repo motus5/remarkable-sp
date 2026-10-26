@@ -15,7 +15,7 @@ static constexpr int kMaxUndo = 50;
 InkCanvas::InkCanvas(QQuickItem *parent)
     : QQuickPaintedItem(parent)
 {
-    setAntialiasing(true);
+    setAntialiasing(!s_monochrome);
     setOpaquePainting(false);
 }
 
@@ -77,7 +77,7 @@ void InkCanvas::beginStroke(qreal x, qreal y, qreal pressure)
         QElapsedTimer t;
         t.start();
         QPainter painter(&m_buffer);
-        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::Antialiasing, !s_monochrome);
         ink::paintStroke(painter, m_strokes.last(), width());
         painter.end();
         if (probe)
@@ -106,7 +106,7 @@ void InkCanvas::extendStroke(qreal x, qreal y, qreal pressure)
         QElapsedTimer t;
         t.start();
         QPainter painter(&m_buffer);
-        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::Antialiasing, !s_monochrome);
         ink::paintStroke(painter, s, width(), s.points.size() - 1);
         painter.end();
         if (probe)
@@ -234,7 +234,7 @@ void InkCanvas::rebuildBuffer()
     m_buffer = QImage(sz, QImage::Format_ARGB32_Premultiplied);
     m_buffer.fill(Qt::transparent);
     QPainter painter(&m_buffer);
-    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::Antialiasing, !s_monochrome);
     for (const Stroke &s : std::as_const(m_strokes))
         ink::paintStroke(painter, s, width());
     update();

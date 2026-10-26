@@ -178,6 +178,35 @@ private slots:
         QVERIFY(qAbs(w.lastPressure - 0.8) < 0.01);
     }
 
+    // T4: with monochrome ink the canvas holds only fully transparent or
+    // fully black pixels (no antialiasing greys).
+    void inkIsMonochrome()
+    {
+        InkCanvas::setMonochrome(true);
+        InkCanvas c;
+        c.setSize(QSizeF(300, 300));
+        c.setPenWidth(6);
+        c.beginStroke(20, 20, 0.5);
+        for (int i = 1; i <= 40; ++i)
+            c.extendStroke(20 + i * 6, 20 + i * 3.3, 0.3 + i / 80.0);
+        c.endStroke();
+        InkCanvas::setMonochrome(false);
+        const QImage img = c.buffer().convertToFormat(QImage::Format_ARGB32);
+        int black = 0, other = 0;
+        for (int y = 0; y < img.height(); ++y)
+            for (int x = 0; x < img.width(); ++x) {
+                const QRgb p = img.pixel(x, y);
+                if (qAlpha(p) == 0)
+                    continue;
+                if (qAlpha(p) == 255 && qRed(p) == 0 && qGreen(p) == 0 && qBlue(p) == 0)
+                    ++black;
+                else
+                    ++other;
+            }
+        QVERIFY(black > 500);
+        QCOMPARE(other, 0);
+    }
+
     // T5: cost of painting one pen sample on a page-sized canvas (regression
     // watch; run with -tickcounter or compare the reported msecs per iteration).
     void inkPaintCost()

@@ -48,6 +48,13 @@ public:
     Q_INVOKABLE void reload();
 
     const QVector<Stroke> &strokes() const { return m_strokes; }
+    const QImage &buffer() const { return m_buffer; }
+
+    // Monochrome ink (no antialiasing): only black and transparent pixels, so
+    // the e-ink panel never needs a grey-level refresh for ink. On by default
+    // on the device (main.cpp), off on desktop.
+    static void setMonochrome(bool on) { s_monochrome = on; }
+    static bool monochrome() { return s_monochrome; }
 
     void paint(QPainter *painter) override;
 
@@ -75,6 +82,7 @@ private:
     bool m_drawing = false;
     bool m_modified = false;
     QImage m_buffer;
+    static inline bool s_monochrome = false;
     QString m_template = QStringLiteral("blank");
     qreal m_spacing = 0;
 };
