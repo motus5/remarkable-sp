@@ -58,12 +58,12 @@
 ## Installation auf dem reMarkable
 
 > **Status:** Am Linux-Desktop getestet, Sync gegen WebDAV und das Format von Super Productivity 19.
-> Die rM1-Version ist mit dem offiziellen SDK gebaut und unter Emulation geprüft, auf echter
-> Hardware aber **noch nicht erprobt** (siehe [TEST-RM1.md](TEST-RM1.md)).
+> Die rM1-Version ist mit dem offiziellen SDK gebaut; v0.3.1 lief im ersten Gerätetest, v0.3.2
+> enthält die Korrekturen daraus und wartet auf den nächsten Test ([TEST-RM1.md](TEST-RM1.md)).
 
 | Gerät | Release-Datei | Stand |
 |---|---|---|
-| reMarkable 1 (Firmware 3.26.0.68) | `remarkable-sp-rm1-<version>.tar.gz` | gebaut, Gerätetest offen |
+| reMarkable 1 (Firmware 3.26.0.68) | `remarkable-sp-rm1-<version>.tar.gz`, Soll-Bild `soll-bild-rm1-<version>.png` | v0.3.1 auf dem Gerät getestet ([Bericht](docs/geraetetest/2026-10-rm1-v0.3.1/BERICHT-RM1.md)), v0.3.2 mit den Korrekturen |
 | reMarkable 2 | – | folgt (eigenes SDK) |
 
 Die App nutzt das Qt 6 des Systems und das epaper-Backend von reMarkable
@@ -75,7 +75,7 @@ gibt keinen Autostart.
    Lizenzen*.
 2. **Installieren** vom Rechner aus, im Ordner dieses Repos:
    ```sh
-   deploy/install.sh remarkable-sp-rm1-0.3.1.tar.gz        # nach /home/root/apps/remarkable-sp
+   deploy/install.sh remarkable-sp-rm1-0.3.2.tar.gz        # nach /home/root/apps/remarkable-sp
    ```
 3. **Starten:**
    ```sh
@@ -129,8 +129,13 @@ sudo apt install qt6-base-dev qt6-base-private-dev qt6-declarative-dev qml6-modu
 cmake -S . -B build && cmake --build build -j
 ./build/remarkable-sp                          # Fenster in halber rM-Größe
 RMSP_OSK=1 ./build/remarkable-sp               # mit Bildschirmtastatur
-QT_QPA_PLATFORM=offscreen ./build/rmsp_tests   # Tests
+ctest --test-dir build --output-on-failure      # Tests (inkl. Vollbild T1, Stiftpunkte T3)
 ```
+
+Mess- und Prüfhilfen (Umgebungsvariablen): `RMSP_LATENCY_LOG=1` (Stift-Latenz je Strich),
+`RMSP_PEN_REPLAY=spiral` mit `RMSP_OPEN_TASK=new` (synthetischer Strich ohne Gerät),
+`RMSP_SCREENSHOT=<datei.png>` (Bild speichern und beenden), `RMSP_INK_ANTIALIAS=1` (Kantenglättung
+am Gerät wieder an).
 
 | Pfad | Inhalt |
 |---|---|
