@@ -18,14 +18,18 @@ enthält die Testschritte.
   - Geschrieben in C++/Qt 6 mit QML.
   - Bedienung mit Stift und Finger, Sync mit Super Productivity über WebDAV.
   - Repo: <https://github.com/motus5/remarkable-sp>, Branch `feature/remarkable-sp-app`,
-    Release **`v0.3.2`**.
+    Release **`v0.3.3`**.
 - **Erster Gerätetest (v0.3.1, 08.–10.10.2026):** App läuft, Stift und Touch treffen. Befunde:
   Oberfläche nur ein Viertel groß, Stift ca. 400 ms verzögert, Titelfeld, Dateibesitz. Bericht:
   `docs/geraetetest/2026-10-rm1-v0.3.1/`.
-- **Neu in v0.3.2:** Vollbild (#3), Stift-Latenz messbar und Tinte ohne Kantenglättung (#4),
-  Titelfeld (#5), Archive gehören root (#6).
-- **Ziel dieses Tests:** die Korrekturen am Gerät bestätigen und die Stift-Latenz **messen**
-  (B7 h), dazu die im ersten Test ausgelassenen Punkte B7 f und g.
+- **Zweiter Gerätetest (v0.3.2, 26./27.10.2026):** Vollbild, Titelfeld, Dateibesitz bestätigt,
+  App-Latenz ~15 ms. Befunde: Stift setzt aus (Handballen), Rückgängig träge, Tastatur-Symbole,
+  Beenden ohne Summe. Bericht: `docs/geraetetest/2026-10-rm1-v0.3.2/`.
+- **Neu in v0.3.3:** Handballen unterbricht keine Striche mehr (#11), Rückgängig/Radierer nur
+  noch im geänderten Bereich (#12), Tastatur-Symbole und Werkzeugleiste (#13), geordnetes
+  Beenden bei Strg+C/SSH-Abbruch (#14), „App beenden“ in den Einstellungen (#15).
+- **Ziel dieses Tests:** die Korrekturen am Gerät bestätigen, vor allem **Dichte ≥ 95 % mit
+  aufgelegter Hand** (B7 d2/h) und schnelles Mehrfach-Rückgängig (B7 i).
   - **Nicht** Ziel: Fehler am Gerät beheben, Code ändern oder Systemdateien anpassen.
   - Korrekturen macht der Entwickler anhand des Berichts und liefert ein neues Release.
 
@@ -152,8 +156,8 @@ rM# P=$(pidof xochitl); [ -n "$P" ] && tr '\0' '\n' < /proc/$P/environ | grep -i
 - **Lokaler Klon:** Der Klon muss auf einer **lokalen Platte** liegen, nicht auf einem
   Netzlaufwerk (SMB, z. B. `/Volumes/…`).
 - **Aktueller Stand:** Vor dem Start `git pull` auf `feature/remarkable-sp-app` ausführen und
-  prüfen, dass `grep 'VERSION 0.3.2' CMakeLists.txt` einen Treffer liefert und `git log --oneline`
-  den Commit „TEST-RM1.md: Korrekturen aus dem ersten Gerätetest (#7)“ enthält. Sonst ist die
+  prüfen, dass `grep 'VERSION 0.3.3' CMakeLists.txt` einen Treffer liefert und `git log --oneline`
+  den Commit „TEST-RM1.md für v0.3.3“ enthält. Sonst ist die
   Anleitung veraltet: **anhalten**.
 - **Assistent als Tester:** im normalen Rechte-Modus laufen, sodass vor jedem Befehl gefragt wird.
   Keine automatische Freigabe für Shell-Befehle.
@@ -207,18 +211,18 @@ Den Klon gibt es schon (A7), falls nicht: `git clone -b feature/remarkable-sp-ap
 https://github.com/motus5/remarkable-sp`.
 
 ```sh
-PC$ for f in SHA256SUMS hello-remarkable-rm1.tar.gz remarkable-sp-rm1-0.3.2.tar.gz soll-bild-rm1-0.3.2.png; do
-      curl -fsSLO https://github.com/motus5/remarkable-sp/releases/download/v0.3.2/$f; done
+PC$ for f in SHA256SUMS hello-remarkable-rm1.tar.gz remarkable-sp-rm1-0.3.3.tar.gz soll-bild-rm1-0.3.3.png; do
+      curl -fsSLO https://github.com/motus5/remarkable-sp/releases/download/v0.3.3/$f; done
 PC$ sha256sum -c --ignore-missing SHA256SUMS
 PC$ device/check-archive.sh hello-remarkable-rm1.tar.gz hello-remarkable 1024
-PC$ device/check-archive.sh remarkable-sp-rm1-0.3.2.tar.gz remarkable-sp 4096
+PC$ device/check-archive.sh remarkable-sp-rm1-0.3.3.tar.gz remarkable-sp 4096
 PC$ cat deploy/install.sh deploy/uninstall.sh
 ```
 **Erwartet:**
-- `hello-remarkable-rm1.tar.gz: OK` und `remarkable-sp-rm1-0.3.2.tar.gz: OK`.
+- `hello-remarkable-rm1.tar.gz: OK` und `remarkable-sp-rm1-0.3.3.tar.gz: OK`.
 - Zweimal `T6 ok: … Besitzer 0/0`.
 - Die Skripte schreiben nur nach `/home/root/apps`.
-- `soll-bild-rm1-0.3.2.png` zeigt, wie die App auf dem Gerät aussehen soll (Emulation, volle
+- `soll-bild-rm1-0.3.3.png` zeigt, wie die App auf dem Gerät aussehen soll (Emulation, volle
   Fläche 1404 × 1872).
 
 ## B0b. Backup der Dokumente: erledigt
@@ -274,7 +278,7 @@ rM# mkdir -p /home/root/apps && touch /home/root/apps/.teststart && ls -la /home
 PC$ deploy/install.sh hello-remarkable-rm1.tar.gz
 ```
 **Erwartet:**
-- `Installiert: 0.3.2 in /home/root/apps/hello-remarkable`.
+- `Installiert: 0.3.3 in /home/root/apps/hello-remarkable`.
 - Die Liste zeigt `hello_remarkable`, `start.sh`, `fallback/`, `licenses/`, `VERSION`, **Besitzer
   `root root`** (in v0.3.1 war es `1001`).
 - `rM# df -k /home` zeigt etwa 250 KB weniger frei.
@@ -325,10 +329,10 @@ rM# systemctl start xochitl; sleep 5; systemctl is-active xochitl
 ## B6. App installieren (PC)
 
 ```sh
-PC$ deploy/install.sh remarkable-sp-rm1-0.3.2.tar.gz
+PC$ deploy/install.sh remarkable-sp-rm1-0.3.3.tar.gz
 rM# du -sk /home/root/apps/remarkable-sp
 ```
-**Erwartet:** `Installiert: 0.3.2 in /home/root/apps/remarkable-sp`, Besitzer `root root`, rund
+**Erwartet:** `Installiert: 0.3.3 in /home/root/apps/remarkable-sp`, Besitzer `root root`, rund
 2,5 MB belegt.
 
 ## B7. xochitl stoppen, App starten und prüfen
@@ -342,7 +346,7 @@ rM# RMSP_LATENCY_LOG=1 /home/root/apps/remarkable-sp/start.sh
 **Erwartet im Terminal:**
 `Pen digitizer /dev/input/eventN (x 0..20967, y 0..15725, pressure 0..4095), transform swapxy,invy`
 
-**Erwartet auf dem Bildschirm** (wie `soll-bild-rm1-0.3.2.png`): Oberfläche über die **volle
+**Erwartet auf dem Bildschirm** (wie `soll-bild-rm1-0.3.3.png`): Oberfläche über die **volle
 Fläche** – Icon-Leiste am linken Rand von oben bis unten, „Heute“ oben, der runde ＋-Knopf **am
 rechten Rand oben**, Fokus/Sync/Einstellungen unten links.
 
@@ -367,18 +371,25 @@ Mit dem Besitzer prüfen und je Punkt ja/nein berichten:
 | b | Mit dem Stift oben links ins Titelfeld schreiben | Tinte erscheint **direkt unter der Stiftspitze** |
 | c | Mit dem Radierer-Ende über die Tinte | Tinte verschwindet |
 | d | Handballen auf das Papier legen | keine Striche |
-| e | ⌨ antippen, „Test“ tippen, Fertig; dann mit dem Stift ins Titelfeld schreiben | Getippter Titel steht groß da, die Handschrift ist ausgeblendet, Hinweis „Handschrift-Titel ausgeblendet …“; **der Stift malt nicht über den getippten Titel** |
+| d2 | **Hand aufgelegt lassen** und mit dem Stift ein Wort und eine Spirale schreiben; auch: Hand zuerst ablegen, dann schreiben | durchgehende Linien, **keine Aussetzer** (#11) |
+| e | Tastatur-Symbol antippen (nur **ein** Symbol sichtbar), mit ⇧ ein großes „T“, dann „est“ tippen, Fertig; dann mit dem Stift ins Titelfeld schreiben | Getippter Titel steht groß da, die Handschrift ist ausgeblendet, Hinweis „Handschrift-Titel ausgeblendet …“; **der Stift malt nicht über den getippten Titel** |
 | e2 | getippten Text wieder löschen (⌫), Fertig | Handschrift-Titel erscheint wieder |
 | f | „Schließen“ unten links | zurück zur Liste, die Aufgabe ist sichtbar (mit Handschrift-Titel) – **im ersten Test nicht geprüft** |
 | g | Aufgabe lange drücken | Kontextmenü erscheint – **im ersten Test nicht geprüft** |
+| e3 | während die Tastatur offen ist: Werkzeugleiste links ansehen | ⇧ und Rücktaste zeigen Symbole (kein leeres Kästchen); keine überlappenden oder angeschnittenen Knöpfe (#13) |
 | h | Latenz messen, siehe unten | `LATENZ`-Zeilen im Terminal |
+| i | zehn kurze Striche zeichnen, dann **schnell zehnmal** Rückgängig tippen | jeder Tipp nimmt einen Strich zurück, nur der Bereich des Strichs frischt auf (#12) |
+| j | Einstellungen → ganz unten „App beenden“ | App endet, im Terminal `LATENZ-SUMME` (danach weiter mit B8) (#15) |
 
 **h – Latenz messen.** Der Besitzer zeichnet auf einer Notizseite nacheinander: (1) eine
 langsame gerade Linie, (2) eine **schnelle Spirale**, (3) ein handgeschriebenes Wort. Nach jedem
 Strich erscheint im Terminal eine Zeile
-`LATENZ roh=… angekommen=… dichte=…% evt_app_ms[…] evt_canvas_ms[…] evt_frame_ms[…] frames=… render_ms[…] malen_us_je_punkt=…`,
-beim Beenden `LATENZ-SUMME …`.
-- `dichte`: Anteil der Stiftpunkte, die auf der Zeichenfläche ankommen (Soll ≥ 95 %).
+`LATENZ roh=… fenster=… angekommen=… dichte=…% abbruch=… verloren=… evt_app_ms[…] evt_canvas_ms[…] evt_frame_ms[…] frames=… render_ms[…] malen_us_je_punkt=…`,
+beim Beenden `LATENZ-SUMME …`. Dabei die Hand **wie gewohnt auflegen**.
+- `dichte`: Anteil der Stiftpunkte, die auf der Zeichenfläche ankommen (Soll ≥ 95 %; seit v0.3.3
+  richtig gezählt, auch wenn mehrere Punkte auf einmal gelesen werden).
+- `fenster`: Punkte, die das App-Fenster erreichen. `abbruch`: Strich endete, obwohl der Stift
+  noch aufsetzte. `verloren`: Striche ohne einen einzigen angekommenen Punkt. Soll: beide 0.
 - `evt_frame_ms`: Zeit vom Stiftereignis bis zum fertig gerenderten Bild. Die E-Ink-Auffrischung
   danach (am rM1 gemessen DU 320–410 ms) ist darin **nicht** enthalten.
 - Dazu der Eindruck des Besitzers: Verzögerung, runde oder eckige Linien, Vergleich mit xochitl.
@@ -387,6 +398,9 @@ beim Beenden `LATENZ-SUMME …`.
   dieselben drei Striche:
   `rM# RMSP_LATENCY_LOG=1 RMSP_INK_ANTIALIAS=1 /home/root/apps/remarkable-sp/start.sh`.
   Der Besitzer sagt, ob sich die Verzögerung spürbar unterscheidet.
+- **Erlaubte Gegenprobe zu #11:** einmal ohne Handballen-Filter starten, Wort und Spirale mit
+  aufgelegter Hand: `rM# RMSP_LATENCY_LOG=1 RMSP_PALM_REJECTION=0 /home/root/apps/remarkable-sp/start.sh`.
+  Erwartet: Aussetzer wie in v0.3.2 (`abbruch` > 0). Danach normal weiter.
 
 **Erlaubte Varianten, wenn (b) nicht stimmt:**
 1. App mit Strg+C beenden.
