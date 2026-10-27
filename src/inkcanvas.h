@@ -23,6 +23,7 @@ class InkCanvas : public QQuickPaintedItem
 
 public:
     explicit InkCanvas(QQuickItem *parent = nullptr);
+    ~InkCanvas() override;
 
     QString source() const { return m_source; }
     void setSource(const QString &path);

@@ -20,6 +20,13 @@ InkCanvas::InkCanvas(QQuickItem *parent)
     setOpaquePainting(false);
 }
 
+InkCanvas::~InkCanvas()
+{
+    // Quitting within the 1.5 s autosave delay must not lose the last strokes (#14).
+    if (m_modified)
+        save();
+}
+
 void InkCanvas::setSource(const QString &path)
 {
     if (path == m_source)

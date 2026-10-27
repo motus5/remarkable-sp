@@ -360,6 +360,22 @@ private slots:
         }
     }
 
+    // #14: settings.ini is written the moment a setting changes (and only
+    // then: before the first change there is no file, which is expected).
+    void settingsWrittenImmediately()
+    {
+        QTemporaryDir data;
+        const QString ini = data.filePath("settings.ini");
+        SpStore store(data.path());
+        Workspace ws(&store, ini);
+        QVERIFY(!QFile::exists(ini));
+        ws.setPenWidth(ws.penWidth() == 3 ? 1 : 3);
+        QVERIFY(QFile::exists(ini));
+        QFile f(ini);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QVERIFY(f.readAll().contains("penWidth="));
+    }
+
     // #11: touch is dropped while the pen is near, a held touch is cancelled
     // when the pen comes, and a dropped touch stays dropped until released.
     void palmRejection()

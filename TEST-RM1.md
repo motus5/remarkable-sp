@@ -412,8 +412,11 @@ berichten, welcher Wert stimmt.
 rM# pidof remarkable-sp || echo "beendet"
 rM# ls -la /home/root/apps/remarkable-sp/data
 ```
-**Erwartet:** `beendet`; in `data/` liegen `sp-state.json`, `sp-client.json`, `settings.ini` und
-`ink/`; im Terminal die Zeile `LATENZ-SUMME …`.
+**Erwartet:** `beendet`; im Terminal zuerst `Signal 2: beende geordnet`, dann die Zeile
+`LATENZ-SUMME …`; in `data/` liegen `sp-state.json`, `sp-client.json` und `ink/`.
+`settings.ini` gibt es nur, wenn in diesem Lauf eine Einstellung geändert wurde (z. B.
+Stiftbreite in c/h) – sie wird sofort beim Ändern geschrieben; fehlt sie ohne Änderung, ist das
+kein Fehler. Auch ein Abbruch der SSH-Verbindung (SIGHUP) beendet die App geordnet.
 
 ## B8. xochitl starten (eigener Schritt)
 

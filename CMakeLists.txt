@@ -124,7 +124,11 @@ if(RMSP_BUILD_TESTS)
                  COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/pen_point_density.sh
                          $<TARGET_FILE:remarkable-sp> ${CMAKE_CURRENT_SOURCE_DIR}/tests/rm1-screen.json
                          ${CMAKE_CURRENT_BINARY_DIR}/t3b spiral-burst-palm)
-        set_tests_properties(rmsp_tests window_fills_screen pen_point_density pen_point_density_palm
+        add_test(NAME graceful_exit
+                 COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/graceful_exit.sh
+                         $<TARGET_FILE:remarkable-sp> ${CMAKE_CURRENT_SOURCE_DIR}/tests/rm1-screen.json
+                         ${CMAKE_CURRENT_BINARY_DIR}/t8)
+        set_tests_properties(rmsp_tests window_fills_screen pen_point_density pen_point_density_palm graceful_exit
                              PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
     endif()
 endif()

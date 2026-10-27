@@ -21,12 +21,53 @@
 
 #include <memory>
 
+#ifdef Q_OS_UNIX
+#include <QSocketNotifier>
+#include <csignal>
+#include <sys/socket.h>
+#include <unistd.h>
+
+// Ctrl+C, kill and a dropped SSH session end the app in order (#14): the
+// handler only writes to a socket, the event loop then quits normally, so
+// aboutToQuit runs (time tracking, LATENZ-SUMME) and pages save their ink.
+static int s_signalFd[2] = {-1, -1};
+
+static void onQuitSignal(int sig)
+{
+    const char c = char(sig);
+    [[maybe_unused]] const ssize_t n = ::write(s_signalFd[0], &c, 1);
+}
+
+static void quitOnSignals(QCoreApplication *app)
+{
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, s_signalFd) != 0)
+        return;
+    auto *notifier = new QSocketNotifier(s_signalFd[1], QSocketNotifier::Read, app);
+    QObject::connect(notifier, &QSocketNotifier::activated, app, [notifier] {
+        char c = 0;
+        [[maybe_unused]] const ssize_t n = ::read(s_signalFd[1], &c, 1);
+        notifier->setEnabled(false);
+        fprintf(stderr, "Signal %d: beende geordnet\n", int(c));
+        QCoreApplication::quit();
+    });
+    struct sigaction sa = {};
+    sa.sa_handler = onQuitSignal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    for (int sig : {SIGINT, SIGTERM, SIGHUP})
+        sigaction(sig, &sa, nullptr);
+}
+#else
+static void quitOnSignals(QCoreApplication *) {}
+#endif
+
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("remarkable-sp"));
     app.setOrganizationName(QStringLiteral("remarkable-sp"));
     app.setApplicationVersion(QStringLiteral(RMSP_VERSION));
+    quitOnSignals(&app);
     // Bundled Noto Sans: the device image ships no fonts for third-party apps.
     QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/NotoSans-Regular.ttf"));
     QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/NotoSans-Bold.ttf"));
