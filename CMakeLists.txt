@@ -24,6 +24,7 @@ set(CORE_SOURCES
     src/icon.h src/icon.cpp
     src/peninput.h src/peninput.cpp
     src/latency.h src/latency.cpp
+    src/palmfilter.h src/palmfilter.cpp
 )
 
 add_library(rmsp_core STATIC ${CORE_SOURCES})
@@ -117,7 +118,12 @@ if(RMSP_BUILD_TESTS)
                  COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/pen_point_density.sh
                          $<TARGET_FILE:remarkable-sp> ${CMAKE_CURRENT_SOURCE_DIR}/tests/rm1-screen.json
                          ${CMAKE_CURRENT_BINARY_DIR}/t3)
-        set_tests_properties(rmsp_tests window_fills_screen pen_point_density
+        # T3b: the same with a resting palm and reads of several samples (#11).
+        add_test(NAME pen_point_density_palm
+                 COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/pen_point_density.sh
+                         $<TARGET_FILE:remarkable-sp> ${CMAKE_CURRENT_SOURCE_DIR}/tests/rm1-screen.json
+                         ${CMAKE_CURRENT_BINARY_DIR}/t3b spiral-burst-palm)
+        set_tests_properties(rmsp_tests window_fills_screen pen_point_density pen_point_density_palm
                              PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
     endif()
 endif()

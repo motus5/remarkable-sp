@@ -1,6 +1,7 @@
 #include "icon.h"
 #include "inkcanvas.h"
 #include "latency.h"
+#include "palmfilter.h"
 #include "peninput.h"
 #include "spstore.h"
 #include "syncengine.h"
@@ -74,6 +75,12 @@ int main(int argc, char *argv[])
     const QString replay = qEnvironmentVariable("RMSP_PEN_REPLAY");
     if (epaper || qEnvironmentVariableIsSet("RMSP_PEN_DEVICE") || !replay.isEmpty()) {
         pen = std::make_unique<PenInput>();
+        // RMSP_PALM_REJECTION=0 switches it off (for comparison measurements).
+        if (qEnvironmentVariable("RMSP_PALM_REJECTION") != QLatin1String("0")) {
+            auto *palm = new PalmFilter(&app);
+            app.installEventFilter(palm);
+            pen->setPalmFilter(palm);
+        }
         if (replay.isEmpty())
             pen->open(qEnvironmentVariable("RMSP_PEN_DEVICE"));
     }

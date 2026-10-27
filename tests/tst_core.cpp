@@ -1,4 +1,5 @@
 #include "inkcanvas.h"
+#include "palmfilter.h"
 #include "peninput.h"
 #include "spstore.h"
 #include "stroke.h"
@@ -14,6 +15,8 @@
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QPointingDevice>
+#include <QWindow>
 
 namespace {
 
@@ -93,6 +96,31 @@ public:
     }
 };
 
+}
+
+// Counts the touch events that get past the PalmFilter.
+class TouchSink : public QWindow
+{
+public:
+    int begins = 0, updates = 0, ends = 0, cancels = 0;
+protected:
+    bool event(QEvent *e) override
+    {
+        switch (e->type()) {
+        case QEvent::TouchBegin: ++begins; return true;
+        case QEvent::TouchUpdate: ++updates; return true;
+        case QEvent::TouchEnd: ++ends; return true;
+        case QEvent::TouchCancel: ++cancels; return true;
+        default: return QWindow::event(e);
+        }
+    }
+};
+
+static void sendTouch(QWindow *w, const QPointingDevice *dev, QEvent::Type type, int id, QEventPoint::State st)
+{
+    QEventPoint p(id, st, QPointF(10, 10), QPointF(10, 10));
+    QTouchEvent e(type, dev, Qt::NoModifier, {p});
+    QCoreApplication::sendEvent(w, &e);
 }
 
 class TstCore : public QObject
@@ -235,6 +263,56 @@ private slots:
         }
         c.endStroke();
         QVERIFY(!c.isEmpty());
+    }
+
+    // #11: touch is dropped while the pen is near, a held touch is cancelled
+    // when the pen comes, and a dropped touch stays dropped until released.
+    void palmRejection()
+    {
+        QPointingDevice dev(QStringLiteral("test touch"), 77, QInputDevice::DeviceType::TouchScreen,
+                            QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position, 5, 0);
+        TouchSink w;
+        PalmFilter f;
+        w.installEventFilter(&f);
+        using S = QEventPoint::State;
+
+        // Pen away: a tap passes.
+        sendTouch(&w, &dev, QEvent::TouchBegin, 1, S::Pressed);
+        sendTouch(&w, &dev, QEvent::TouchEnd, 1, S::Released);
+        QCOMPARE(w.begins, 1);
+        QCOMPARE(w.ends, 1);
+
+        // Palm already resting, then the pen comes: Qt Quick gets a cancel,
+        // the rest of that touch is dropped.
+        sendTouch(&w, &dev, QEvent::TouchBegin, 2, S::Pressed);
+        QCOMPARE(w.begins, 2);
+        f.setPenNear(true);
+        QCOMPARE(w.cancels, 1);
+        sendTouch(&w, &dev, QEvent::TouchUpdate, 2, S::Updated);
+        QCOMPARE(w.updates, 0);
+
+        // Palm lands while writing: dropped.
+        sendTouch(&w, &dev, QEvent::TouchBegin, 3, S::Pressed);
+        QCOMPARE(w.begins, 2);
+
+        // Pen leaves: still dropped during the grace time ...
+        f.setPenNear(false);
+        QVERIFY(f.penBlocking());
+        sendTouch(&w, &dev, QEvent::TouchUpdate, 3, S::Updated);
+        QCOMPARE(w.updates, 0);
+        // ... and the dropped touch stays dropped after it, until released.
+        QTest::qWait(PalmFilter::kGraceMs + 50);
+        QVERIFY(!f.penBlocking());
+        sendTouch(&w, &dev, QEvent::TouchUpdate, 3, S::Updated);
+        sendTouch(&w, &dev, QEvent::TouchEnd, 3, S::Released);
+        sendTouch(&w, &dev, QEvent::TouchEnd, 2, S::Released);
+        QCOMPARE(w.updates, 0);
+        QCOMPARE(w.ends, 1);
+
+        // A new touch afterwards passes again.
+        sendTouch(&w, &dev, QEvent::TouchBegin, 4, S::Pressed);
+        QCOMPARE(w.begins, 3);
+        QVERIFY(f.droppedEvents() >= 5);
     }
 
     void versionCompare()

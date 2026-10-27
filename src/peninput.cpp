@@ -1,6 +1,7 @@
 #include "peninput.h"
 
 #include "latency.h"
+#include "palmfilter.h"
 
 #include <QDir>
 #include <QGuiApplication>
@@ -185,6 +186,9 @@ void PenInput::flush()
     const QPointF global = mapToScreen(m_x, m_y, size);
     const QPointF local = window->mapFromGlobal(global.toPoint()) + (global - global.toPoint());
 
+    // Palm rejection first: no touch may reach Qt Quick during the stroke.
+    if (m_palm)
+        m_palm->setPenNear(m_inProximity || m_touching);
     if (m_inProximity && !m_wasInProximity)
         QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, device, true);
     if (m_inProximity || m_wasTouching) {
@@ -194,6 +198,10 @@ void PenInput::flush()
     }
     if (!m_inProximity && m_wasInProximity)
         QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, device, false);
+    if (!m_touching && m_wasTouching) {
+        if (LatencyProbe *probe = LatencyProbe::instance())
+            probe->penLifted();
+    }
     m_wasTouching = m_touching;
     m_wasInProximity = m_inProximity;
 }
@@ -217,9 +225,14 @@ void PenInput::startReplay(const QString &pattern)
     struct Sample {
         qreal x, y;
         bool down;
+        bool idle = false; // nothing from the pen (pen away from the screen)
     };
     auto samples = std::make_shared<QVector<Sample>>();
-    if (pattern == QLatin1String("spiral")) {
+    const bool palmFirst = pattern.contains(QLatin1String("-palmfirst"));
+    if (palmFirst)
+        for (int i = 0; i < 40; ++i)
+            samples->append({0, 0, false, true});
+    if (pattern.startsWith(QLatin1String("spiral"))) {
         const qreal aspect = 1404.0 / 1872.0;
         for (int i = 0; i < 400; ++i) {
             const qreal a = i * 0.08;
@@ -231,34 +244,77 @@ void PenInput::startReplay(const QString &pattern)
             samples->append({0.25 + 0.5 * i / 60.0, 0.85, true});
         samples->append({0, 0, false});
     }
+    const int burst = pattern.contains(QLatin1String("-burst")) ? 4 : 1;
+    const bool palm = pattern.contains(QLatin1String("-palm")); // also -palmfirst
+    if (palm && !m_touch) {
+        m_touch = new QPointingDevice(QStringLiteral("replay touch"), 3, QInputDevice::DeviceType::TouchScreen,
+                                      QPointingDevice::PointerType::Finger,
+                                      QInputDevice::Capability::Position | QInputDevice::Capability::Area, 10, 0,
+                                      QString(), QPointingDeviceUniqueId(), this);
+        QWindowSystemInterface::registerInputDevice(m_touch);
+    }
     auto index = std::make_shared<int>(0);
     auto *timer = new QTimer(this);
-    timer->setInterval(5);
-    connect(timer, &QTimer::timeout, this, [this, timer, samples, index] {
+    timer->setInterval(5 * burst);
+    connect(timer, &QTimer::timeout, this, [this, timer, samples, index, burst, palm] {
         if (*index >= samples->size()) {
             timer->stop();
             timer->deleteLater();
+            if (palm)
+                replayPalm(-1, QEventPoint::State::Released);
             emit replayFinished();
             return;
         }
-        const Sample s = samples->at((*index)++);
-        if (!s.down) {
-            feed(EV_KEY, BTN_TOUCH, 0);
-            feed(EV_ABS, ABS_PRESSURE, 0);
+        // The hand comes down after the pen (10th sample), with -palmfirst
+        // before it (pen starts after 40 idle samples), and stays.
+        if (palm && (*index >= 10 || samples->at(*index).idle))
+            replayPalm(*index, m_palmDown ? QEventPoint::State::Updated : QEventPoint::State::Pressed);
+        for (int b = 0; b < burst && *index < samples->size(); ++b) {
+            const Sample s = samples->at((*index)++);
+            if (s.idle)
+                continue;
+            if (!s.down) {
+                feed(EV_KEY, BTN_TOUCH, 0);
+                feed(EV_ABS, ABS_PRESSURE, 0);
+                feed(EV_SYN, SYN_REPORT, 0);
+                feed(EV_KEY, BTN_TOOL_PEN, 0);
+                feed(EV_SYN, SYN_REPORT, 0);
+                continue;
+            }
+            const QPoint raw = rawFromNormalized(s.x, s.y);
+            if (!m_inProximity)
+                feed(EV_KEY, BTN_TOOL_PEN, 1);
+            feed(EV_ABS, ABS_X, raw.x());
+            feed(EV_ABS, ABS_Y, raw.y());
+            feed(EV_ABS, ABS_PRESSURE, m_maxPressure * 2 / 3);
+            if (!m_touching)
+                feed(EV_KEY, BTN_TOUCH, 1);
             feed(EV_SYN, SYN_REPORT, 0);
-            feed(EV_KEY, BTN_TOOL_PEN, 0);
-            feed(EV_SYN, SYN_REPORT, 0);
-            return;
         }
-        const QPoint raw = rawFromNormalized(s.x, s.y);
-        if (!m_inProximity)
-            feed(EV_KEY, BTN_TOOL_PEN, 1);
-        feed(EV_ABS, ABS_X, raw.x());
-        feed(EV_ABS, ABS_Y, raw.y());
-        feed(EV_ABS, ABS_PRESSURE, m_maxPressure * 2 / 3);
-        if (!m_touching)
-            feed(EV_KEY, BTN_TOUCH, 1);
-        feed(EV_SYN, SYN_REPORT, 0);
     });
     timer->start();
+}
+
+void PenInput::replayPalm(int step, QEventPoint::State state)
+{
+    if (!m_touch || (state == QEventPoint::State::Pressed && m_palmDown)
+        || (state != QEventPoint::State::Pressed && !m_palmDown))
+        return;
+    QWindow *window = QGuiApplication::focusWindow();
+    if (!window && !QGuiApplication::topLevelWindows().isEmpty())
+        window = QGuiApplication::topLevelWindows().constFirst();
+    if (!window)
+        return;
+    const QSizeF screen = window->screen() ? QSizeF(window->screen()->geometry().size()) : QSizeF(window->size());
+    // A palm is a large contact that wanders by a few pixels.
+    const qreal wobble = step < 0 ? 0 : (step % 8) * 0.002;
+    const QPointF centre(screen.width() * (0.80 + wobble), screen.height() * (0.80 + wobble));
+    QWindowSystemInterface::TouchPoint tp;
+    tp.id = 1;
+    tp.state = state;
+    tp.area = QRectF(centre - QPointF(60, 80), QSizeF(120, 160));
+    tp.normalPosition = QPointF(centre.x() / screen.width(), centre.y() / screen.height());
+    tp.pressure = state == QEventPoint::State::Released ? 0 : 1;
+    QWindowSystemInterface::handleTouchEvent(window, m_touch, {tp});
+    m_palmDown = state != QEventPoint::State::Released;
 }

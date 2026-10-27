@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QObject>
+#include <QEventPoint>
 #include <QPointF>
 
+class PalmFilter;
 class QPointingDevice;
 class QSocketNotifier;
 
@@ -25,6 +27,8 @@ public:
     // Opens `path`, or searches /dev/input for a pen digitizer when empty.
     bool open(const QString &path = {});
     QString devicePath() const { return m_path; }
+    // Touch events are dropped while the pen is near (see PalmFilter).
+    void setPalmFilter(PalmFilter *filter) { m_palm = filter; }
 
     // Raw evdev event handling, public for tests.
     void setRanges(int maxX, int maxY, int maxPressure);
@@ -36,7 +40,13 @@ public:
     QPoint rawFromNormalized(qreal sx, qreal sy) const;
 
     // Synthetic pen input for measurements without a device:
-    // "spiral" = one fast spiral plus one straight stroke at 200 Hz.
+    // "spiral" = one fast spiral plus one straight stroke at 200 Hz, one
+    // sample per read. Suffixes (combinable, e.g. "spiral-burst-palm"):
+    //   -burst  4 samples per read every 20 ms, as on the device when the
+    //           GUI thread is busy
+    //   -palm   a resting, slightly moving hand on the touch screen next to
+    //           the stroke (device test v0.3.2: palm interrupts writing)
+    //   -palmfirst  the hand is already resting before the pen comes
     void startReplay(const QString &pattern);
 
 
@@ -48,12 +58,16 @@ signals:
 private:
     void readEvents();
     void flush();
+    void replayPalm(int step, QEventPoint::State state);
 
     int m_fd = -1;
     QString m_path;
     QSocketNotifier *m_notifier = nullptr;
     QPointingDevice *m_pen = nullptr;
     QPointingDevice *m_eraser = nullptr;
+    PalmFilter *m_palm = nullptr;
+    QPointingDevice *m_touch = nullptr; // replay only
+    bool m_palmDown = false;
 
     int m_maxX = 20967, m_maxY = 15725, m_maxPressure = 4095; // rM1/rM2 Wacom defaults
     bool m_swap = true, m_invX = false, m_invY = true;
