@@ -145,6 +145,11 @@ Item {
 
             Section { title: "Daten" }
             Hint { text: "Datenordner: " + app.dataDir + "\nHandschrift bleibt auf dem Gerät. Aufgaben, Zeiten und Planung werden synchronisiert." }
+
+            // A way out on the device itself (#15): ends like Ctrl+C, saves
+            // everything; start.sh decides what runs next.
+            Section { title: "App" }
+            RmButton { u: root.u; icon: "close"; text: "App beenden"; onClicked: Qt.quit() }
         }
     }
 }
