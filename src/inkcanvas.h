@@ -49,6 +49,8 @@ public:
 
     const QVector<Stroke> &strokes() const { return m_strokes; }
     const QImage &buffer() const { return m_buffer; }
+    QRect lastRepaint() const { return m_lastRepaint; } // for tests
+    QImage renderAll() const; // all strokes painted from scratch
 
     // Monochrome ink (no antialiasing): only black and transparent pixels, so
     // the e-ink panel never needs a grey-level refresh for ink. On by default
@@ -70,6 +72,12 @@ protected:
 
 private:
     void rebuildBuffer();
+    // Undo, redo and the eraser only repaint where strokes changed: a full
+    // repaint took ~250 µs per point on the rM1 and refreshed the whole panel
+    // (#12). Strokes are compared by their shared point data.
+    void showStrokes(const QVector<Stroke> &next);
+    void repaintRect(const QRect &r);
+    QRect strokeRect(const Stroke &s) const;
     void pushUndo();
     void setModified(bool m);
     QPointF norm(qreal x, qreal y) const;
@@ -82,6 +90,7 @@ private:
     bool m_drawing = false;
     bool m_modified = false;
     QImage m_buffer;
+    QRect m_lastRepaint;
     static inline bool s_monochrome = false;
     QString m_template = QStringLiteral("blank");
     qreal m_spacing = 0;

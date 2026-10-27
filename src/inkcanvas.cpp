@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QPainter>
 #include <QSaveFile>
+#include <QSet>
 
 static constexpr int kMaxUndo = 50;
 
@@ -135,18 +136,20 @@ void InkCanvas::eraseAt(qreal x, qreal y, qreal radius)
     const QPointF p = norm(x, y);
     const float r = float(radius / (width() > 0 ? width() : 1));
     bool pushed = false;
+    QRect dirty;
     for (int i = m_strokes.size() - 1; i >= 0; --i) {
         if (m_strokes[i].hitTest(p, r)) {
             if (!pushed) {
                 pushUndo();
                 pushed = true;
             }
+            dirty |= strokeRect(m_strokes[i]);
             m_strokes.removeAt(i);
         }
     }
     if (pushed) {
         setModified(true);
-        rebuildBuffer();
+        repaintRect(dirty);
         emit strokesChanged();
     }
 }
@@ -167,9 +170,8 @@ void InkCanvas::undo()
     if (m_undo.isEmpty())
         return;
     m_redo.append(m_strokes);
-    m_strokes = m_undo.takeLast();
+    showStrokes(m_undo.takeLast());
     setModified(true);
-    rebuildBuffer();
     emit strokesChanged();
 }
 
@@ -178,9 +180,8 @@ void InkCanvas::redo()
     if (m_redo.isEmpty())
         return;
     m_undo.append(m_strokes);
-    m_strokes = m_redo.takeLast();
+    showStrokes(m_redo.takeLast());
     setModified(true);
-    rebuildBuffer();
     emit strokesChanged();
 }
 
@@ -231,13 +232,76 @@ void InkCanvas::rebuildBuffer()
         m_buffer = QImage();
         return;
     }
-    m_buffer = QImage(sz, QImage::Format_ARGB32_Premultiplied);
-    m_buffer.fill(Qt::transparent);
-    QPainter painter(&m_buffer);
+    m_buffer = renderAll();
+    update();
+}
+
+QImage InkCanvas::renderAll() const
+{
+    const QSize sz = QSizeF(width(), height()).toSize();
+    if (sz.isEmpty())
+        return {};
+    QImage image(sz, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing, !s_monochrome);
     for (const Stroke &s : std::as_const(m_strokes))
         ink::paintStroke(painter, s, width());
-    update();
+    return image;
+}
+
+QRect InkCanvas::strokeRect(const Stroke &s) const
+{
+    if (s.points.isEmpty())
+        return {};
+    const qreal w = width();
+    float x0 = s.points[0].x, x1 = x0, y0 = s.points[0].y, y1 = y0;
+    for (const InkPoint &p : s.points) {
+        x0 = qMin(x0, p.x);
+        x1 = qMax(x1, p.x);
+        y0 = qMin(y0, p.y);
+        y1 = qMax(y1, p.y);
+    }
+    // Widest line is 160 % of the base width (ink::paintStroke), plus room for antialiasing.
+    const int pad = int(s.width * w * 0.8) + 3;
+    return QRectF(QPointF(x0 * w, y0 * w), QPointF(x1 * w, y1 * w)).toAlignedRect().adjusted(-pad, -pad, pad, pad);
+}
+
+void InkCanvas::showStrokes(const QVector<Stroke> &next)
+{
+    QSet<const InkPoint *> before, after;
+    for (const Stroke &s : std::as_const(m_strokes))
+        before.insert(s.points.constData());
+    for (const Stroke &s : next)
+        after.insert(s.points.constData());
+    QRect dirty;
+    for (const Stroke &s : std::as_const(m_strokes))
+        if (!after.contains(s.points.constData()))
+            dirty |= strokeRect(s);
+    for (const Stroke &s : next)
+        if (!before.contains(s.points.constData()))
+            dirty |= strokeRect(s);
+    m_strokes = next;
+    repaintRect(dirty);
+}
+
+void InkCanvas::repaintRect(const QRect &rect)
+{
+    const QRect r = rect & QRect(QPoint(0, 0), m_buffer.size());
+    m_lastRepaint = r;
+    if (r.isEmpty() || m_buffer.isNull())
+        return;
+    QPainter painter(&m_buffer);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.fillRect(r, Qt::transparent);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    painter.setClipRect(r);
+    painter.setRenderHint(QPainter::Antialiasing, !s_monochrome);
+    for (const Stroke &s : std::as_const(m_strokes))
+        if (strokeRect(s).intersects(r))
+            ink::paintStroke(painter, s, width());
+    painter.end();
+    update(r);
 }
 
 void InkCanvas::setPaperTemplate(const QString &t)

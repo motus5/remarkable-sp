@@ -265,6 +265,70 @@ private slots:
         QVERIFY(!c.isEmpty());
     }
 
+    // #12: undo, redo and eraser repaint only the changed area, and the
+    // result is pixel-identical to a full repaint.
+    void inkPartialRepaint()
+    {
+        for (bool mono : {true, false}) {
+            InkCanvas::setMonochrome(mono);
+            InkCanvas c;
+            c.setSize(QSizeF(1000, 1200));
+            // 40 overlapping zig-zag strokes over the page
+            for (int k = 0; k < 40; ++k) {
+                c.beginStroke(50 + k * 20, 100 + k * 25, 0.6);
+                for (int i = 1; i < 30; ++i)
+                    c.extendStroke(50 + k * 20 + i * 8, 100 + k * 25 + (i % 2) * 30, 0.4 + (i % 5) * 0.1);
+                c.endStroke();
+            }
+            // The repainted area must equal a repaint of everything there.
+            auto fullRepaint = [&] {
+                const QRect r = c.lastRepaint();
+                QCOMPARE(c.buffer().copy(r), c.renderAll().copy(r));
+            };
+            const QRect page(0, 0, 1000, 1200);
+            c.undo();
+            QVERIFY(!c.lastRepaint().isEmpty());
+            QVERIFY(c.lastRepaint().width() * c.lastRepaint().height() < page.width() * page.height() / 10);
+            fullRepaint();
+            c.undo();
+            c.redo();
+            fullRepaint();
+            c.eraseAt(50 + 10 * 20 + 40, 100 + 10 * 25, 6);
+            QCOMPARE(c.strokes().size(), 38);
+            QVERIFY(c.lastRepaint().width() * c.lastRepaint().height() < page.width() * page.height() / 4);
+            fullRepaint();
+            c.undo(); // brings the erased stroke back
+            fullRepaint();
+        }
+        InkCanvas::setMonochrome(false);
+    }
+
+    // T7 (#12): time of one undo on a full page (compare with v0.3.2:
+    // full repaint). Reported in ms per undo.
+    void inkUndoCost()
+    {
+        InkCanvas c;
+        c.setSize(QSizeF(1300, 1500));
+        for (int k = 0; k < 120; ++k) {
+            c.beginStroke(40 + (k % 12) * 100, 60 + (k / 12) * 140, 0.6);
+            for (int i = 1; i < 60; ++i)
+                c.extendStroke(40 + (k % 12) * 100 + i * 1.5, 60 + (k / 12) * 140 + (i % 7) * 9, 0.6);
+            c.endStroke();
+        }
+        QElapsedTimer t;
+        t.start();
+        for (int i = 0; i < 20; ++i)
+            c.undo();
+        const double ms = t.nsecsElapsed() / 1e6 / 20;
+        t.restart();
+        const QImage all = c.renderAll(); // what every undo did up to v0.3.2
+        const double fullMs = t.nsecsElapsed() / 1e6;
+        qInfo("T7 Rückgängig: %.2f ms je Schritt, volles Neuzeichnen (bis v0.3.2) %.2f ms, 100 Striche (Desktop)",
+              ms, fullMs);
+        QVERIFY(!all.isNull());
+        QCOMPARE(c.strokes().size(), 100);
+    }
+
     // #11: touch is dropped while the pen is near, a held touch is cancelled
     // when the pen comes, and a dropped touch stays dropped until released.
     void palmRejection()
