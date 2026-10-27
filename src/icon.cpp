@@ -34,7 +34,8 @@ QStringList Icon::names()
     return {"menu", "today", "project", "tag", "worklog", "focus", "sync", "settings", "plus", "check",
             "play", "pause", "pen", "pen-fine", "pen-thick", "eraser", "undo", "redo", "close", "calendar",
             "more", "chevron-left", "chevron-right", "chevron-down", "trash", "subtask", "keyboard",
-            "template", "export", "circle", "done-list", "priority", "estimate", "back", "update", "inbox"};
+            "template", "export", "circle", "done-list", "priority", "estimate", "back", "update", "inbox",
+            "shift", "backspace"};
 }
 
 // All drawing happens on a 24x24 grid (like common icon sets), scaled to the item.
@@ -270,6 +271,30 @@ void Icon::paint(QPainter *p)
         p->drawPath(path);
     } else if (n == QLatin1String("circle")) {
         p->drawEllipse(QPointF(12, 12), 8.5, 8.5);
+    } else if (n == QLatin1String("shift")) {
+        // Outlined arrow up (the device font has no shift symbol).
+        QPainterPath path;
+        path.moveTo(12, 3.5);
+        path.lineTo(20.5, 12.5);
+        path.lineTo(15.5, 12.5);
+        path.lineTo(15.5, 20);
+        path.lineTo(8.5, 20);
+        path.lineTo(8.5, 12.5);
+        path.lineTo(3.5, 12.5);
+        path.closeSubpath();
+        p->drawPath(path);
+    } else if (n == QLatin1String("backspace")) {
+        // Key shape pointing left with an x (no backspace symbol in the font).
+        QPainterPath path;
+        path.moveTo(2.5, 12);
+        path.lineTo(8, 5.5);
+        path.lineTo(21, 5.5);
+        path.lineTo(21, 18.5);
+        path.lineTo(8, 18.5);
+        path.closeSubpath();
+        p->drawPath(path);
+        p->drawLine(QPointF(11.5, 9), QPointF(17.5, 15));
+        p->drawLine(QPointF(17.5, 9), QPointF(11.5, 15));
     }
     p->restore();
 }

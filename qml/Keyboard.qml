@@ -1,4 +1,5 @@
 import QtQuick
+import RemarkableSP.Core
 
 // On-screen keyboard for devices without a hardware keyboard (reMarkable 2).
 // Types into `target` (any TextInput). German layout, no animations.
@@ -64,10 +65,10 @@ Rectangle {
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0.6 * root.u
-            Key { text: "⇧"; wide: 1.5; checked: root.shift; onClicked: root.shift = !root.shift }
+            Key { icon: "shift"; wide: 1.5; checked: root.shift; onClicked: root.shift = !root.shift }
             Key { text: root.symbols ? "abc" : "#+="; wide: 1.5; onClicked: root.symbols = !root.symbols }
             Key { text: "Leer"; wide: 4; onClicked: root.type(" ") }
-            Key { text: "⌫"; wide: 1.5; onClicked: root.backspace() }
+            Key { icon: "backspace"; wide: 1.5; onClicked: root.backspace() }
             Key { text: "Fertig"; wide: 2; checked: true; onClicked: root.done() }
         }
     }
@@ -75,6 +76,8 @@ Rectangle {
     component Key: Rectangle {
         id: key
         property alias text: t.text
+        // Drawn icon instead of text; the device font lacks the shift and backspace symbols.
+        property string icon: ""
         property real wide: 1
         property bool checked: false
         signal clicked()
@@ -88,6 +91,15 @@ Rectangle {
             id: t
             anchors.centerIn: parent
             font.pixelSize: 3.2 * root.u
+            color: key.checked ? Theme.paper : Theme.ink
+            visible: key.icon === ""
+        }
+        Icon {
+            anchors.centerIn: parent
+            visible: key.icon !== ""
+            width: 4.2 * root.u
+            height: width
+            name: key.icon
             color: key.checked ? Theme.paper : Theme.ink
         }
         TapHandler { onTapped: key.clicked() }

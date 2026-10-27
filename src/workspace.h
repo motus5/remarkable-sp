@@ -145,6 +145,12 @@ public:
     // the handwriting is the title and SP gets kHandwritingTitle.
     Q_INVOKABLE static bool titleIsTyped(const QString &typed) { return !typed.trimmed().isEmpty(); }
     Q_INVOKABLE static QString storedTitle(const QString &typed, bool titleInkEmpty);
+    Q_INVOKABLE static bool isHandwritingTitle(const QString &title) { return title == kHandwritingTitle; }
+    // For display: the device font has no ✍ (font-check: data)
+    Q_INVOKABLE static QString displayTitle(const QString &title)
+    {
+        return isHandwritingTitle(title) ? QStringLiteral("Handschrift") : title;
+    }
 
     Q_INVOKABLE void toggleTracking(const QString &id);
     Q_INVOKABLE void stopTracking();
@@ -160,7 +166,8 @@ public:
     Q_INVOKABLE QString formatDuration(qint64 ms) const;
     Q_INVOKABLE QString formatDay(const QString &isoDay) const;
 
-    static inline const QString kHandwritingTitle = QStringLiteral("✍ Handschrift (reMarkable)");
+    // Data value synced to Super Productivity; the app shows displayTitle().
+    static inline const QString kHandwritingTitle = QStringLiteral("✍ Handschrift (reMarkable)"); // font-check: data
 
 signals:
     void contextChanged();

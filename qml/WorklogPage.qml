@@ -47,7 +47,7 @@ Item {
                 Item {
                     width: list.width
                     height: 5 * root.u
-                    Text { width: parent.width * 0.8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; text: modelData.title; font.pixelSize: 2.7 * root.u }
+                    Text { width: parent.width * 0.8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; text: app.displayTitle(modelData.title); font.pixelSize: 2.7 * root.u }
                     Text { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: app.formatDuration(modelData.ms); font.pixelSize: 2.7 * root.u; color: Theme.muted }
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.rule }
                 }

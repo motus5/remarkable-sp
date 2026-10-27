@@ -119,9 +119,19 @@ Item {
                             anchors.right: parent.right
                             anchors.rightMargin: 3 * root.u
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.detail || (modelData.checked ? "✓" : "")
+                            text: modelData.detail || ""
                             font.pixelSize: 2.6 * root.u
                             color: Theme.muted
+                        }
+                        // Tick for the selected entry, drawn (no font glyph on the device).
+                        Icon {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 3 * root.u
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !modelData.detail && !!modelData.checked
+                            width: 3.4 * root.u
+                            height: width
+                            name: "check"
                         }
                         TapHandler {
                             onTapped: {

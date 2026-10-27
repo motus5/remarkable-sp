@@ -109,6 +109,7 @@ if(RMSP_BUILD_TESTS)
         enable_testing()
         add_executable(rmsp_tests tests/tst_core.cpp)
         target_link_libraries(rmsp_tests PRIVATE rmsp_core Qt6::Test)
+        target_compile_definitions(rmsp_tests PRIVATE RMSP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME rmsp_tests COMMAND rmsp_tests)
         add_test(NAME window_fills_screen
                  COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/window_fills_screen.sh

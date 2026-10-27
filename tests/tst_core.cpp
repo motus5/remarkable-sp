@@ -16,6 +16,7 @@
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QPointingDevice>
+#include <QRawFont>
 #include <QWindow>
 
 namespace {
@@ -327,6 +328,36 @@ private slots:
               ms, fullMs);
         QVERIFY(!all.isNull());
         QCOMPARE(c.strokes().size(), 100);
+    }
+
+    // #13: every non-ASCII character in the QML and C++ sources must exist in
+    // the bundled font; the device has no fallback fonts (⇧ and ⌫ were empty
+    // boxes on the rM1 while the desktop drew them from system fonts).
+    void glyphsInBundledFont()
+    {
+        const QString root = QStringLiteral(RMSP_SOURCE_DIR);
+        for (const QString &fontFile : {QStringLiteral("NotoSans-Regular.ttf"), QStringLiteral("NotoSans-Bold.ttf")}) {
+            const QRawFont font(root + QStringLiteral("/third_party/fonts/") + fontFile, 12);
+            QVERIFY2(font.isValid(), qPrintable(fontFile));
+            QStringList missing;
+            for (const QString &dir : {QStringLiteral("/qml"), QStringLiteral("/src")}) {
+                const QDir d(root + dir);
+                for (const QString &name : d.entryList({QStringLiteral("*.qml"), QStringLiteral("*.cpp"), QStringLiteral("*.h")})) {
+                    QFile f(d.filePath(name));
+                    QVERIFY(f.open(QIODevice::ReadOnly));
+                    // Lines marked "font-check: data" hold data values that are never shown.
+                    QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+                    lines.removeIf([](const QString &l) { return l.contains(QLatin1String("font-check: data")); });
+                    const QList<uint> cps = lines.join(QLatin1Char('\n')).toUcs4();
+                    for (uint cp : cps)
+                        if (cp > 0x7f && !font.supportsCharacter(cp))
+                            missing << QStringLiteral("%1 U+%2 in %3").arg(QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1))
+                                                                    .arg(cp, 4, 16, QLatin1Char('0')).arg(name);
+                }
+            }
+            missing.removeDuplicates();
+            QVERIFY2(missing.isEmpty(), qPrintable(fontFile + QStringLiteral(": ") + missing.join(QStringLiteral(", "))));
+        }
     }
 
     // #11: touch is dropped while the pen is near, a held touch is cancelled

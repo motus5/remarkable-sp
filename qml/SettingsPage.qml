@@ -111,7 +111,7 @@ Item {
             }
             Hint {
                 visible: sync.provider !== ""
-                text: (sync.status !== "" ? (sync.lastOk ? "" : "⚠ ") + sync.status + "\n" : "")
+                text: (sync.status !== "" ? (sync.lastOk ? "" : "Fehler: ") + sync.status + "\n" : "")
                       + "Letzter Sync: " + sync.lastSyncText + "  ·  ausstehende Änderungen: " + app.pendingCount
             }
 

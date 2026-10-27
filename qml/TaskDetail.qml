@@ -112,8 +112,12 @@ Rectangle {
         z: 2
         Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.rule }
 
+        // While the keyboard is open the column does not fit: hide it rather
+        // than show cut-off buttons (#13).
         Column {
+            id: toolColumn
             y: 12 * root.u
+            visible: y + implicitHeight <= tools.height
             width: parent.width
             spacing: 0.5 * root.u
 
@@ -147,9 +151,13 @@ Rectangle {
             IconButton { id: moreBtn; u: root.u; icon: "more"; onClicked: root.openMenu(root.moreMenu(), moreBtn, "") }
         }
 
+        // Only where it fits: with the keyboard open the column is shorter
+        // and the button overlapped the time caption (#13).
         IconButton {
+            id: closeBtn
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 2 * root.u
+            visible: toolColumn.y + toolColumn.implicitHeight + closeBtn.height + 3 * root.u <= tools.height
             u: root.u
             icon: "close"
             caption: "Schließen"
@@ -222,10 +230,12 @@ Rectangle {
             Rectangle {
                 width: parent.width; height: 3; color: Theme.ink
                 // keyboard: type or edit the title that syncs to Super Productivity
+                // Hidden while the text field shows its own keyboard icon (#13).
                 IconButton {
                     anchors.right: parent.right
                     anchors.bottom: parent.top
                     anchors.bottomMargin: 2 * root.u
+                    visible: !titleField.visible
                     u: root.u
                     size: 8 * root.u
                     icon: "keyboard"
@@ -236,11 +246,12 @@ Rectangle {
 
             Field {
                 id: titleField
-                visible: root.editingTitle || (titleInk.canvas.empty && !root.typedTitle)
+                // Stays while typing: the first letter makes typedTitle true.
+                visible: root.editingTitle || input.activeFocus || (titleInk.canvas.empty && !root.typedTitle)
                 width: parent.width
                 u: root.u
                 fontSize: 2.6 * root.u
-                text: root.task.title === "✍ Handschrift (reMarkable)" ? "" : (root.task.title || "")
+                text: app.isHandwritingTitle(root.task.title || "") ? "" : (root.task.title || "")
                 placeholder: "Titel tippen (wird mit Super Productivity synchronisiert)"
                 onEdited: (t) => {
                     app.setTitle(root.taskId, app.storedTitle(t, titleInk.canvas.empty))

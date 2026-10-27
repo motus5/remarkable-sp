@@ -107,7 +107,7 @@ SyncEngine::Step SyncEngine::syncOnce(SyncBackend &backend)
         if (backend.get(QStringLiteral("sync-ops.json")).status == RemoteFile::Ok)
             setStatus(QStringLiteral("Der Ordner nutzt SPs geteilte Sync-Dateien („Surgical sync“). Bitte in SP ausschalten."), false);
         else if (backend.get(QStringLiteral("__meta_")).status == RemoteFile::Ok)
-            setStatus(QStringLiteral("Alte Sync-Daten (SP ≤ 16) gefunden. Bitte Super Productivity aktualisieren und einmal synchronisieren."), false);
+            setStatus(QStringLiteral("Alte Sync-Daten (SP 16 oder älter) gefunden. Bitte Super Productivity aktualisieren und einmal synchronisieren."), false);
         else
             setStatus(QStringLiteral("Keine SP-Daten gefunden (%1). Bitte zuerst in Super Productivity den Sync einrichten und einmal synchronisieren.")
                           .arg(backend.describe()), false);

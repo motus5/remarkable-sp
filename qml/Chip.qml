@@ -1,7 +1,7 @@
 import QtQuick
 import RemarkableSP.Core
 
-// Compact property chip ("📅 Morgen", "30 m", "# Tag"): tap to change.
+// Compact property chip ("Morgen", "30 m", "Tags"): tap to change.
 Rectangle {
     id: root
     property alias text: label.text

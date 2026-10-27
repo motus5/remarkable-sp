@@ -35,7 +35,7 @@ Item {
             parts.push(app.formatDuration(timeSpent) + (timeEstimate > 0 ? " von " + app.formatDuration(timeEstimate) : ""))
         return parts.join("   ·   ")
     }
-    readonly property bool handwritten: title === "" || title === "✍ Handschrift (reMarkable)"
+    readonly property bool handwritten: title === "" || app.isHandwritingTitle(title)
 
     height: (meta !== "" ? 14 : 11) * u
 
