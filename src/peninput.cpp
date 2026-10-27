@@ -1,0 +1,320 @@
+#include "peninput.h"
+
+#include "latency.h"
+#include "palmfilter.h"
+
+#include <QDir>
+#include <QGuiApplication>
+#include <QPointingDevice>
+#include <QScreen>
+#include <QSocketNotifier>
+#include <QTimer>
+#include <QWindow>
+#include <QtMath>
+#include <qpa/qwindowsysteminterface.h>
+
+#ifdef Q_OS_LINUX
+#include <fcntl.h>
+#include <linux/input.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
+
+#ifndef EV_SYN
+// Non-Linux builds only use feed() in tests; keep the event codes available.
+#define EV_SYN 0x00
+#define EV_KEY 0x01
+#define EV_ABS 0x03
+#define SYN_REPORT 0
+#define BTN_TOOL_PEN 0x140
+#define BTN_TOOL_RUBBER 0x141
+#define BTN_TOUCH 0x14a
+#define ABS_X 0x00
+#define ABS_Y 0x01
+#define ABS_PRESSURE 0x18
+#endif
+
+PenInput::PenInput(QObject *parent)
+    : QObject(parent)
+{
+    const auto caps = QInputDevice::Capability::Position | QInputDevice::Capability::Pressure;
+    m_pen = new QPointingDevice(QStringLiteral("reMarkable pen"), 1, QInputDevice::DeviceType::Stylus,
+                                QPointingDevice::PointerType::Pen, caps, 1, 2, QString(),
+                                QPointingDeviceUniqueId::fromNumericId(1), this);
+    m_eraser = new QPointingDevice(QStringLiteral("reMarkable eraser"), 2, QInputDevice::DeviceType::Stylus,
+                                   QPointingDevice::PointerType::Eraser, caps, 1, 2, QString(),
+                                   QPointingDeviceUniqueId::fromNumericId(2), this);
+    QWindowSystemInterface::registerInputDevice(m_pen);
+    QWindowSystemInterface::registerInputDevice(m_eraser);
+    setTransform(qEnvironmentVariable("RMSP_PEN_TRANSFORM", defaultTransform()));
+}
+
+PenInput::~PenInput()
+{
+#ifdef Q_OS_LINUX
+    if (m_fd >= 0)
+        ::close(m_fd);
+#endif
+}
+
+void PenInput::setRanges(int maxX, int maxY, int maxPressure)
+{
+    m_maxX = qMax(1, maxX);
+    m_maxY = qMax(1, maxY);
+    m_maxPressure = qMax(1, maxPressure);
+}
+
+void PenInput::setTransform(const QString &spec)
+{
+    const QStringList parts = spec.toLower().split(QLatin1Char(','), Qt::SkipEmptyParts);
+    m_swap = parts.contains(QLatin1String("swapxy"));
+    m_invX = parts.contains(QLatin1String("invx"));
+    m_invY = parts.contains(QLatin1String("invy"));
+}
+
+QPointF PenInput::mapToScreen(int rawX, int rawY, const QSizeF &screen) const
+{
+    qreal x = qreal(rawX) / m_maxX;
+    qreal y = qreal(rawY) / m_maxY;
+    if (m_swap)
+        std::swap(x, y);
+    if (m_invX)
+        x = 1 - x;
+    if (m_invY)
+        y = 1 - y;
+    return QPointF(qBound<qreal>(0, x, 1) * screen.width(), qBound<qreal>(0, y, 1) * screen.height());
+}
+
+bool PenInput::open(const QString &path)
+{
+#ifdef Q_OS_LINUX
+    QStringList candidates;
+    if (!path.isEmpty()) {
+        candidates << path;
+    } else {
+        const QDir dir(QStringLiteral("/dev/input"));
+        for (const QString &n : dir.entryList({QStringLiteral("event*")}, QDir::System, QDir::Name))
+            candidates << dir.filePath(n);
+    }
+    for (const QString &c : std::as_const(candidates)) {
+        const int fd = ::open(QFile::encodeName(c).constData(), O_RDONLY | O_NONBLOCK);
+        if (fd < 0)
+            continue;
+        // A pen digitizer reports BTN_TOOL_PEN and absolute pressure.
+        unsigned long keys[(KEY_MAX + 1) / (8 * sizeof(long)) + 1] = {};
+        input_absinfo ax{}, ay{}, ap{};
+        const bool isPen = ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keys)), keys) >= 0
+            && (keys[BTN_TOOL_PEN / (8 * sizeof(long))] >> (BTN_TOOL_PEN % (8 * sizeof(long))) & 1)
+            && ioctl(fd, EVIOCGABS(ABS_X), &ax) >= 0 && ioctl(fd, EVIOCGABS(ABS_Y), &ay) >= 0
+            && ioctl(fd, EVIOCGABS(ABS_PRESSURE), &ap) >= 0 && ax.maximum > 0 && ay.maximum > 0;
+        if (!isPen) {
+            ::close(fd);
+            continue;
+        }
+        setRanges(ax.maximum, ay.maximum, ap.maximum);
+        // Time stamps on the monotonic clock for the latency probe. This only
+        // affects our own file descriptor, not other readers of the device.
+        int clockId = CLOCK_MONOTONIC;
+        ioctl(fd, EVIOCSCLOCKID, &clockId);
+        m_fd = fd;
+        m_path = c;
+        m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+        connect(m_notifier, &QSocketNotifier::activated, this, &PenInput::readEvents);
+        qInfo("Pen digitizer %s (x 0..%d, y 0..%d, pressure 0..%d), transform %s", qPrintable(c), ax.maximum,
+              ay.maximum, ap.maximum, qPrintable(qEnvironmentVariable("RMSP_PEN_TRANSFORM", defaultTransform())));
+        return true;
+    }
+    qWarning("No pen digitizer found in /dev/input");
+#else
+    Q_UNUSED(path);
+#endif
+    return false;
+}
+
+void PenInput::readEvents()
+{
+#ifdef Q_OS_LINUX
+    input_event ev[64];
+    for (;;) {
+        const ssize_t n = ::read(m_fd, ev, sizeof(ev));
+        if (n <= 0)
+            break;
+        for (size_t i = 0; i < size_t(n) / sizeof(input_event); ++i)
+            // input_event_sec/usec: works with 32 and 64 bit time_t (rM1 SDK uses 64 bit).
+            feed(ev[i].type, ev[i].code, ev[i].value, qint64(ev[i].input_event_sec) * 1000000 + ev[i].input_event_usec);
+    }
+#endif
+}
+
+void PenInput::feed(int type, int code, int value, qint64 timeUs)
+{
+    if (type == EV_SYN && code == SYN_REPORT)
+        m_syncTimeUs = timeUs < 0 ? LatencyProbe::nowUs() : timeUs;
+    if (type == EV_ABS) {
+        if (code == ABS_X)
+            m_x = value;
+        else if (code == ABS_Y)
+            m_y = value;
+        else if (code == ABS_PRESSURE)
+            m_pressure = value;
+    } else if (type == EV_KEY) {
+        if (code == BTN_TOUCH)
+            m_touching = value != 0;
+        else if (code == BTN_TOOL_PEN || code == BTN_TOOL_RUBBER) {
+            m_inProximity = value != 0;
+            if (value)
+                m_rubber = code == BTN_TOOL_RUBBER;
+        }
+    } else if (type == EV_SYN && code == SYN_REPORT) {
+        flush();
+    }
+}
+
+void PenInput::flush()
+{
+    QWindow *window = QGuiApplication::focusWindow();
+    if (!window && !QGuiApplication::topLevelWindows().isEmpty())
+        window = QGuiApplication::topLevelWindows().constFirst();
+    if (!window)
+        return;
+    if (m_touching) {
+        if (LatencyProbe *probe = LatencyProbe::instance())
+            probe->rawSample(m_syncTimeUs, LatencyProbe::nowUs());
+    }
+    const QPointingDevice *device = m_rubber ? m_eraser : m_pen;
+    const QSizeF size = window->screen() ? QSizeF(window->screen()->geometry().size()) : QSizeF(window->size());
+    const QPointF global = mapToScreen(m_x, m_y, size);
+    const QPointF local = window->mapFromGlobal(global.toPoint()) + (global - global.toPoint());
+
+    // Palm rejection first: no touch may reach Qt Quick during the stroke.
+    if (m_palm)
+        m_palm->setPenNear(m_inProximity || m_touching);
+    if (m_inProximity && !m_wasInProximity)
+        QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, device, true);
+    if (m_inProximity || m_wasTouching) {
+        const qreal pressure = m_touching ? qreal(m_pressure) / m_maxPressure : 0;
+        QWindowSystemInterface::handleTabletEvent(window, device, local, global,
+                                                  m_touching ? Qt::LeftButton : Qt::NoButton, pressure, 0, 0, 0, 0, 0);
+    }
+    if (!m_inProximity && m_wasInProximity)
+        QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, device, false);
+    if (!m_touching && m_wasTouching) {
+        if (LatencyProbe *probe = LatencyProbe::instance())
+            probe->penLifted();
+    }
+    m_wasTouching = m_touching;
+    m_wasInProximity = m_inProximity;
+}
+
+QPoint PenInput::rawFromNormalized(qreal sx, qreal sy) const
+{
+    qreal x = sx, y = sy;
+    if (m_invY)
+        y = 1 - y;
+    if (m_invX)
+        x = 1 - x;
+    if (m_swap)
+        std::swap(x, y);
+    return QPoint(qRound(x * m_maxX), qRound(y * m_maxY));
+}
+
+void PenInput::startReplay(const QString &pattern)
+{
+    // Screen positions (normalised) of the samples, 5 ms apart like the
+    // digitizer's ~200 Hz. A fast spiral in the notes area, then a quick line.
+    struct Sample {
+        qreal x, y;
+        bool down;
+        bool idle = false; // nothing from the pen (pen away from the screen)
+    };
+    auto samples = std::make_shared<QVector<Sample>>();
+    const bool palmFirst = pattern.contains(QLatin1String("-palmfirst"));
+    if (palmFirst)
+        for (int i = 0; i < 40; ++i)
+            samples->append({0, 0, false, true});
+    if (pattern.startsWith(QLatin1String("spiral"))) {
+        const qreal aspect = 1404.0 / 1872.0;
+        for (int i = 0; i < 400; ++i) {
+            const qreal a = i * 0.08;
+            const qreal r = 0.02 + 0.18 * i / 400.0;
+            samples->append({0.55 + r * qCos(a), 0.62 + r * qSin(a) * aspect, true});
+        }
+        samples->append({0, 0, false});
+        for (int i = 0; i <= 60; ++i)
+            samples->append({0.25 + 0.5 * i / 60.0, 0.85, true});
+        samples->append({0, 0, false});
+    }
+    const int burst = pattern.contains(QLatin1String("-burst")) ? 4 : 1;
+    const bool palm = pattern.contains(QLatin1String("-palm")); // also -palmfirst
+    if (palm && !m_touch) {
+        m_touch = new QPointingDevice(QStringLiteral("replay touch"), 3, QInputDevice::DeviceType::TouchScreen,
+                                      QPointingDevice::PointerType::Finger,
+                                      QInputDevice::Capability::Position | QInputDevice::Capability::Area, 10, 0,
+                                      QString(), QPointingDeviceUniqueId(), this);
+        QWindowSystemInterface::registerInputDevice(m_touch);
+    }
+    auto index = std::make_shared<int>(0);
+    auto *timer = new QTimer(this);
+    timer->setInterval(5 * burst);
+    connect(timer, &QTimer::timeout, this, [this, timer, samples, index, burst, palm] {
+        if (*index >= samples->size()) {
+            timer->stop();
+            timer->deleteLater();
+            if (palm)
+                replayPalm(-1, QEventPoint::State::Released);
+            emit replayFinished();
+            return;
+        }
+        // The hand comes down after the pen (10th sample), with -palmfirst
+        // before it (pen starts after 40 idle samples), and stays.
+        if (palm && (*index >= 10 || samples->at(*index).idle))
+            replayPalm(*index, m_palmDown ? QEventPoint::State::Updated : QEventPoint::State::Pressed);
+        for (int b = 0; b < burst && *index < samples->size(); ++b) {
+            const Sample s = samples->at((*index)++);
+            if (s.idle)
+                continue;
+            if (!s.down) {
+                feed(EV_KEY, BTN_TOUCH, 0);
+                feed(EV_ABS, ABS_PRESSURE, 0);
+                feed(EV_SYN, SYN_REPORT, 0);
+                feed(EV_KEY, BTN_TOOL_PEN, 0);
+                feed(EV_SYN, SYN_REPORT, 0);
+                continue;
+            }
+            const QPoint raw = rawFromNormalized(s.x, s.y);
+            if (!m_inProximity)
+                feed(EV_KEY, BTN_TOOL_PEN, 1);
+            feed(EV_ABS, ABS_X, raw.x());
+            feed(EV_ABS, ABS_Y, raw.y());
+            feed(EV_ABS, ABS_PRESSURE, m_maxPressure * 2 / 3);
+            if (!m_touching)
+                feed(EV_KEY, BTN_TOUCH, 1);
+            feed(EV_SYN, SYN_REPORT, 0);
+        }
+    });
+    timer->start();
+}
+
+void PenInput::replayPalm(int step, QEventPoint::State state)
+{
+    if (!m_touch || (state == QEventPoint::State::Pressed && m_palmDown)
+        || (state != QEventPoint::State::Pressed && !m_palmDown))
+        return;
+    QWindow *window = QGuiApplication::focusWindow();
+    if (!window && !QGuiApplication::topLevelWindows().isEmpty())
+        window = QGuiApplication::topLevelWindows().constFirst();
+    if (!window)
+        return;
+    const QSizeF screen = window->screen() ? QSizeF(window->screen()->geometry().size()) : QSizeF(window->size());
+    // A palm is a large contact that wanders by a few pixels.
+    const qreal wobble = step < 0 ? 0 : (step % 8) * 0.002;
+    const QPointF centre(screen.width() * (0.80 + wobble), screen.height() * (0.80 + wobble));
+    QWindowSystemInterface::TouchPoint tp;
+    tp.id = 1;
+    tp.state = state;
+    tp.area = QRectF(centre - QPointF(60, 80), QSizeF(120, 160));
+    tp.normalPosition = QPointF(centre.x() / screen.width(), centre.y() / screen.height());
+    tp.pressure = state == QEventPoint::State::Released ? 0 : 1;
+    QWindowSystemInterface::handleTouchEvent(window, m_touch, {tp});
+    m_palmDown = state != QEventPoint::State::Released;
+}

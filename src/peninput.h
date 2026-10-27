@@ -1,0 +1,80 @@
+#pragma once
+
+#include <QObject>
+#include <QEventPoint>
+#include <QPointF>
+
+class PalmFilter;
+class QPointingDevice;
+class QSocketNotifier;
+
+// Reads the Wacom digitizer of the reMarkable 1/2 straight from evdev and
+// feeds Qt tablet events (pen and eraser, with pressure), because the
+// reMarkable "epaper" platform plugin only handles touch and keys.
+//
+// The digitizer is mounted rotated against the portrait screen. The mapping
+// defaults to the one used by community tools for rM1/rM2 and can be changed
+// with RMSP_PEN_TRANSFORM (comma separated: swapxy, invx, invy), applied in
+// that order on raw coordinates normalised to 0..1.
+class PenInput : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit PenInput(QObject *parent = nullptr);
+    ~PenInput() override;
+
+    // Opens `path`, or searches /dev/input for a pen digitizer when empty.
+    bool open(const QString &path = {});
+    QString devicePath() const { return m_path; }
+    // Touch events are dropped while the pen is near (see PalmFilter).
+    void setPalmFilter(PalmFilter *filter) { m_palm = filter; }
+
+    // Raw evdev event handling, public for tests.
+    void setRanges(int maxX, int maxY, int maxPressure);
+    void setTransform(const QString &spec);
+    // timeUs: kernel time stamp of the event (CLOCK_MONOTONIC, µs), -1 = now
+    void feed(int type, int code, int value, qint64 timeUs = -1);
+    QPointF mapToScreen(int rawX, int rawY, const QSizeF &screen) const;
+    // Inverse of mapToScreen for normalised screen coordinates (0..1).
+    QPoint rawFromNormalized(qreal sx, qreal sy) const;
+
+    // Synthetic pen input for measurements without a device:
+    // "spiral" = one fast spiral plus one straight stroke at 200 Hz, one
+    // sample per read. Suffixes (combinable, e.g. "spiral-burst-palm"):
+    //   -burst  4 samples per read every 20 ms, as on the device when the
+    //           GUI thread is busy
+    //   -palm   a resting, slightly moving hand on the touch screen next to
+    //           the stroke (device test v0.3.2: palm interrupts writing)
+    //   -palmfirst  the hand is already resting before the pen comes
+    void startReplay(const QString &pattern);
+
+
+    static QString defaultTransform() { return QStringLiteral("swapxy,invy"); }
+
+signals:
+    void replayFinished();
+
+private:
+    void readEvents();
+    void flush();
+    void replayPalm(int step, QEventPoint::State state);
+
+    int m_fd = -1;
+    QString m_path;
+    QSocketNotifier *m_notifier = nullptr;
+    QPointingDevice *m_pen = nullptr;
+    QPointingDevice *m_eraser = nullptr;
+    PalmFilter *m_palm = nullptr;
+    QPointingDevice *m_touch = nullptr; // replay only
+    bool m_palmDown = false;
+
+    int m_maxX = 20967, m_maxY = 15725, m_maxPressure = 4095; // rM1/rM2 Wacom defaults
+    bool m_swap = true, m_invX = false, m_invY = true;
+
+    qint64 m_syncTimeUs = -1;
+    int m_x = 0, m_y = 0, m_pressure = 0;
+    bool m_touching = false, m_wasTouching = false;
+    bool m_rubber = false;
+    bool m_inProximity = false, m_wasInProximity = false;
+};
